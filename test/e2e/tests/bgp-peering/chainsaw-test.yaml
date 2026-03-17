@@ -92,6 +92,24 @@ spec:
                     safi: Unicast
               EOF
 
+    - name: wait-for-endpoint-cache-sync
+      try:
+        - script:
+            content: |
+              set -e
+              # Wait for all 3 endpoints to have the e2e-test label visible
+              for i in $(seq 1 30); do
+                COUNT=$(kubectl get bgpendpoints -l e2e-test=bgp-peering --no-headers 2>/dev/null | wc -l)
+                if [ "$COUNT" -ge 3 ]; then
+                  echo "OK: $COUNT endpoints with e2e-test=bgp-peering label"
+                  exit 0
+                fi
+                echo "Waiting for endpoints to have labels ($COUNT/3)..."
+                sleep 2
+              done
+              echo "ERROR: only $COUNT/3 endpoints have the label after 60s"
+              exit 1
+
     - name: create-peering-policy-mesh
       try:
         - apply:
