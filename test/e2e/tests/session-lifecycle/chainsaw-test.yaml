@@ -92,11 +92,13 @@ spec:
               W3=$(kubectl get node bgp-e2e-worker3 \
                 -o jsonpath='{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
                 | grep ':' | head -1)
-              # Exec into the bgp pod on any node and verify the peer exists
+              # The session is localEndpoint=bgp-e2e-worker2, remoteEndpoint=bgp-e2e-worker3.
+              # Only the pod on bgp-e2e-worker2 has W3 as a GoBGP peer. Select that pod explicitly.
               POD=$(kubectl -n bgp-system get pod \
                 -l app.kubernetes.io/name=bgp \
+                --field-selector spec.nodeName=bgp-e2e-worker2 \
                 -o jsonpath='{.items[0].metadata.name}')
-              echo "Checking GoBGP peer $W3 in pod $POD"
+              echo "Checking GoBGP peer $W3 in pod $POD (on bgp-e2e-worker2)"
               kubectl -n bgp-system exec "$POD" -c gobgpd -- \
                 gobgp neighbor | grep -q "${W3}"
               echo "OK: peer $W3 present in GoBGP"
@@ -114,10 +116,12 @@ spec:
               W3=$(kubectl get node bgp-e2e-worker3 \
                 -o jsonpath='{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
                 | grep ':' | head -1)
+              # Use the pod on bgp-e2e-worker2 — that is where W3 was configured as a peer.
               POD=$(kubectl -n bgp-system get pod \
                 -l app.kubernetes.io/name=bgp \
+                --field-selector spec.nodeName=bgp-e2e-worker2 \
                 -o jsonpath='{.items[0].metadata.name}')
-              echo "Verifying peer $W3 removed from GoBGP in pod $POD"
+              echo "Verifying peer $W3 removed from GoBGP in pod $POD (on bgp-e2e-worker2)"
 
               ATTEMPTS=0
               STILL_PRESENT=1

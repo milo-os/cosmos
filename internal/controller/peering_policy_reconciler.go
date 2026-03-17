@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -131,11 +132,14 @@ func (r *PeeringPolicyReconciler) Reconcile(ctx context.Context, req reconcile.R
 
 	// Update status.
 	activeSessions := int32(len(desiredSessions))
-	statusPatch := client.MergeFrom(policy.DeepCopy())
-	policy.Status.MatchedEndpoints = int32(len(endpoints))
-	policy.Status.ActiveSessions = activeSessions
-	if err := r.Status().Patch(ctx, &policy, statusPatch); err != nil {
-		return ctrl.Result{}, fmt.Errorf("patch policy status: %w", err)
+	matchedEndpoints := int32(len(endpoints))
+	if policy.Status.MatchedEndpoints != matchedEndpoints || policy.Status.ActiveSessions != activeSessions {
+		statusPatch := client.MergeFrom(policy.DeepCopy())
+		policy.Status.MatchedEndpoints = matchedEndpoints
+		policy.Status.ActiveSessions = activeSessions
+		if err := r.Status().Patch(ctx, &policy, statusPatch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch policy status: %w", err)
+		}
 	}
 
 	if created > 0 || deleted > 0 {
@@ -143,7 +147,15 @@ func (r *PeeringPolicyReconciler) Reconcile(ctx context.Context, req reconcile.R
 			policy.Name, len(endpoints), activeSessions, created, deleted)
 	}
 
-	return ctrl.Result{}, nil
+	// If no endpoints matched, requeue quickly in case the informer cache had stale label
+	// data at reconcile time (endpoint label updates that predated this policy's creation
+	// cannot be retriggered via the endpoint watch). A short requeue ensures we catch up.
+	if matchedEndpoints == 0 {
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	// Periodic requeue to pick up any missed endpoint label changes.
+	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
 // computeDesiredSessions returns the set of BGPSession objects that should exist
