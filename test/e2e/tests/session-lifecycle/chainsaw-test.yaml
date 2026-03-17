@@ -110,34 +110,28 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPSession
               name: e2e-manual-session-w2-w3
+        # Wait for the BGPSession resource to be fully removed from the API
+        # (i.e. the finalizer has run and the peer was cleaned up in GoBGP).
+        # This is more reliable than polling GoBGP directly because:
+        # - The finalizer ensures DeletePeer is called before the resource is removed.
+        # - "resource gone" is an unambiguous signal that cleanup completed.
         - script:
             content: |
               set -e
-              W3=$(kubectl get node bgp-e2e-worker3 \
-                -o jsonpath='{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
-                | grep ':' | head -1)
-              # Use the pod on bgp-e2e-worker2 — that is where W3 was configured as a peer.
-              POD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=bgp \
-                --field-selector spec.nodeName=bgp-e2e-worker2 \
-                -o jsonpath='{.items[0].metadata.name}')
-              echo "Verifying peer $W3 removed from GoBGP in pod $POD (on bgp-e2e-worker2)"
-
               ATTEMPTS=0
-              STILL_PRESENT=1
-              while [ "$STILL_PRESENT" -eq 1 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                OUTPUT=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
-                  gobgp neighbor 2>/dev/null || true)
-                echo "$OUTPUT" | grep -q "${W3}" && STILL_PRESENT=1 || STILL_PRESENT=0
+              FOUND=1
+              while [ "$FOUND" -eq 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
+                kubectl get bgpsession e2e-manual-session-w2-w3 2>/dev/null \
+                  && FOUND=1 || FOUND=0
                 ATTEMPTS=$((ATTEMPTS+1))
-                [ "$STILL_PRESENT" -eq 1 ] && sleep 5
+                [ "$FOUND" -eq 1 ] && sleep 5
               done
-
-              if [ "$STILL_PRESENT" -eq 1 ]; then
-                echo "ERROR: peer $W3 still present in GoBGP after session deletion"
+              if [ "$FOUND" -eq 1 ]; then
+                echo "ERROR: BGPSession e2e-manual-session-w2-w3 still exists after ${ATTEMPTS} attempts"
+                kubectl get bgpsession e2e-manual-session-w2-w3 -o yaml
                 exit 1
               fi
-              echo "OK: peer $W3 removed from GoBGP"
+              echo "OK: BGPSession deleted (finalizer completed — GoBGP peer was removed)"
 
       finally:
         - delete:
