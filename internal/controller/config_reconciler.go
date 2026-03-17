@@ -43,8 +43,11 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req reconcile.Request)
 	// Resolve router ID.
 	routerID, err := r.resolveRouterID(ctx, &cfg)
 	if err != nil {
+		log.Printf("bgp/config: router ID resolution failed for %s (localEndpoint=%s): %v", req.Name, r.LocalEndpoint, err)
 		return r.setNotReady(ctx, &cfg, fmt.Sprintf("router ID resolution failed: %v", err))
 	}
+
+	log.Printf("bgp/config: resolved router ID %s for %s (localEndpoint=%s)", routerID, req.Name, r.LocalEndpoint)
 
 	c := r.GoBGP.Client()
 	if c == nil {
