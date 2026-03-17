@@ -346,14 +346,37 @@ func (r *PeeringPolicyReconciler) mapEndpointToPolicies(ctx context.Context, obj
 	return requests
 }
 
+// mapSessionToPolicies returns reconcile requests for the BGPPeeringPolicy that owns
+// the given BGPSession. Used to re-reconcile the policy when a session is deleted so
+// that the reconciler can immediately recreate it rather than waiting for the next
+// RequeueAfter interval.
+func (r *PeeringPolicyReconciler) mapSessionToPolicies(_ context.Context, obj client.Object) []reconcile.Request {
+	session, ok := obj.(*bgpv1alpha1.BGPSession)
+	if !ok {
+		return nil
+	}
+	for _, ref := range session.OwnerReferences {
+		if ref.Kind == "BGPPeeringPolicy" {
+			return []reconcile.Request{
+				{NamespacedName: types.NamespacedName{Name: ref.Name}},
+			}
+		}
+	}
+	return nil
+}
+
 // SetupWithManager registers the PeeringPolicyReconciler with the controller-runtime manager.
-// It watches both BGPPeeringPolicy and BGPEndpoint resources.
+// It watches BGPPeeringPolicy, BGPEndpoint, and BGPSession resources.
 func (r *PeeringPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bgpv1alpha1.BGPPeeringPolicy{}).
 		Watches(
 			&bgpv1alpha1.BGPEndpoint{},
 			handler.EnqueueRequestsFromMapFunc(r.mapEndpointToPolicies),
+		).
+		Watches(
+			&bgpv1alpha1.BGPSession{},
+			handler.EnqueueRequestsFromMapFunc(r.mapSessionToPolicies),
 		).
 		Complete(r)
 }

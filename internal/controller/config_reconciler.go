@@ -14,7 +14,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
@@ -177,8 +179,11 @@ func ipv6ToRouterID(ip net.IP) string {
 }
 
 // SetupWithManager registers the ConfigReconciler with the controller-runtime manager.
+// The GenerationChangedPredicate prevents status-only updates from triggering a
+// re-reconcile, which would otherwise create a feedback loop: status patch →
+// watch event → reconcile → status patch → ...
 func (r *ConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&bgpv1alpha1.BGPConfiguration{}).
+		For(&bgpv1alpha1.BGPConfiguration{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
