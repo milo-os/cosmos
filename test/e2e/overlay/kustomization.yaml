@@ -29,4 +29,4 @@ patches:
               fieldRef:
                 fieldPath: spec.nodeName
           - name: LOCAL_ENDPOINT
-            value: "node-$(NODE_NAME)"
+            value: "$(NODE_NAME)"

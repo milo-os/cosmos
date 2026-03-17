@@ -25,7 +25,7 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
               metadata:
-                name: node-bgp-e2e-worker-rp
+                name: bgp-e2e-worker-rp
                 labels:
                   e2e-test: bgp-route-policy
               spec:
@@ -38,7 +38,7 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
               metadata:
-                name: node-bgp-e2e-worker2-rp
+                name: bgp-e2e-worker2-rp
                 labels:
                   e2e-test: bgp-route-policy
               spec:
@@ -143,9 +143,9 @@ spec:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
-              name: node-bgp-e2e-worker-rp
+              name: bgp-e2e-worker-rp
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
-              name: node-bgp-e2e-worker2-rp
+              name: bgp-e2e-worker2-rp

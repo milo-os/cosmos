@@ -50,7 +50,7 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
               metadata:
-                name: node-bgp-e2e-worker
+                name: bgp-e2e-worker
                 labels:
                   e2e-test: bgp-peering
                   topology.kubernetes.io/region: region1
@@ -64,7 +64,7 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
               metadata:
-                name: node-bgp-e2e-worker2
+                name: bgp-e2e-worker2
                 labels:
                   e2e-test: bgp-peering
                   topology.kubernetes.io/region: region2
@@ -78,7 +78,7 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
               metadata:
-                name: node-bgp-e2e-worker3
+                name: bgp-e2e-worker3
                 labels:
                   e2e-test: bgp-peering
                   topology.kubernetes.io/region: region3
@@ -165,17 +165,17 @@ spec:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
-              name: node-bgp-e2e-worker
+              name: bgp-e2e-worker
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
-              name: node-bgp-e2e-worker2
+              name: bgp-e2e-worker2
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
-              name: node-bgp-e2e-worker3
+              name: bgp-e2e-worker3
         - delete:
             ref:
               apiVersion: v1

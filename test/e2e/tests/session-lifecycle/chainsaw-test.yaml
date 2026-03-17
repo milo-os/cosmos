@@ -24,7 +24,7 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
               metadata:
-                name: node-bgp-e2e-worker2-lc
+                name: bgp-e2e-worker2-lc
                 labels:
                   e2e-test: session-lifecycle
               spec:
@@ -37,7 +37,7 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
               metadata:
-                name: node-bgp-e2e-worker3-lc
+                name: bgp-e2e-worker3-lc
                 labels:
                   e2e-test: session-lifecycle
               spec:
@@ -52,8 +52,8 @@ spec:
               metadata:
                 name: e2e-manual-session-w2-w3
               spec:
-                localEndpoint: node-bgp-e2e-worker2-lc
-                remoteEndpoint: node-bgp-e2e-worker3-lc
+                localEndpoint: bgp-e2e-worker2-lc
+                remoteEndpoint: bgp-e2e-worker3-lc
                 holdTime: 30
                 keepaliveTime: 10
               EOF
@@ -138,9 +138,9 @@ spec:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
-              name: node-bgp-e2e-worker2-lc
+              name: bgp-e2e-worker2-lc
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPEndpoint
-              name: node-bgp-e2e-worker3-lc
+              name: bgp-e2e-worker3-lc
