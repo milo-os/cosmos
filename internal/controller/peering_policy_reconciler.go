@@ -44,7 +44,9 @@ func (r *PeeringPolicyReconciler) Reconcile(ctx context.Context, req reconcile.R
 	// Only the "designated" pod (the one whose LocalEndpoint sorts first among all
 	// registered BGPEndpoints) performs writes. Non-designated pods skip reconciliation
 	// silently. This prevents DaemonSet pods from racing over the same sessions.
-	if !r.isDesignatedReconciler(ctx) {
+	designated := r.isDesignatedReconciler(ctx)
+	log.Printf("bgp/policy: Reconcile %s: designated=%v localEndpoint=%s", req.Name, designated, r.LocalEndpoint)
+	if !designated {
 		return ctrl.Result{}, nil
 	}
 
