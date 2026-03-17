@@ -94,6 +94,7 @@ tasks:
       - task: deploy-crds
       - task: deploy-bgp-operator
       - task: deploy-bgp-config
+      - task: deploy-endpoints
 
   deploy-cilium:
     desc: Install Cilium as the base CNI for pod networking
@@ -143,6 +144,53 @@ tasks:
     desc: Apply the default BGPConfiguration
     cmds:
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -f {{.TASKFILE_DIR}}/fixtures/bgpconfiguration-default.yaml
+
+  deploy-endpoints:
+    desc: Create BGPEndpoint resources for each worker node (required for router ID resolution)
+    cmds:
+      - |
+        get_ipv6() {
+          KUBECONFIG={{.KUBECONFIG}} kubectl get node "$1" \
+            -o jsonpath='{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
+            | grep ':' | head -1
+        }
+        W1=$(get_ipv6 bgp-e2e-worker)
+        W2=$(get_ipv6 bgp-e2e-worker2)
+        W3=$(get_ipv6 bgp-e2e-worker3)
+        KUBECONFIG={{.KUBECONFIG}} kubectl apply -f - <<EOF
+        apiVersion: bgp.miloapis.com/v1alpha1
+        kind: BGPEndpoint
+        metadata:
+          name: bgp-e2e-worker
+        spec:
+          address: "${W1}"
+          asNumber: 65000
+          addressFamilies:
+            - afi: IPv6
+              safi: Unicast
+        ---
+        apiVersion: bgp.miloapis.com/v1alpha1
+        kind: BGPEndpoint
+        metadata:
+          name: bgp-e2e-worker2
+        spec:
+          address: "${W2}"
+          asNumber: 65000
+          addressFamilies:
+            - afi: IPv6
+              safi: Unicast
+        ---
+        apiVersion: bgp.miloapis.com/v1alpha1
+        kind: BGPEndpoint
+        metadata:
+          name: bgp-e2e-worker3
+        spec:
+          address: "${W3}"
+          asNumber: 65000
+          addressFamilies:
+            - afi: IPv6
+              safi: Unicast
+        EOF
 
   test:
     desc: Run the Chainsaw E2E test suite
