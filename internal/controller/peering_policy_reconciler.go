@@ -68,7 +68,7 @@ func (r *PeeringPolicyReconciler) Reconcile(ctx context.Context, req reconcile.R
 			ObservedGeneration: policy.Generation,
 		})
 		if err := r.Status().Patch(ctx, &policy, statusPatch); err != nil {
-			log.Printf("bgp/policy: patch status: %v", err)
+			return ctrl.Result{}, fmt.Errorf("patch policy status (InvalidConfig): %w", err)
 		}
 		return ctrl.Result{}, configErr
 	}
@@ -78,7 +78,7 @@ func (r *PeeringPolicyReconciler) Reconcile(ctx context.Context, req reconcile.R
 		statusPatch := client.MergeFrom(policy.DeepCopy())
 		apimeta.RemoveStatusCondition(&policy.Status.Conditions, bgpv1alpha1.BGPPeeringPolicyInvalidConfig)
 		if err := r.Status().Patch(ctx, &policy, statusPatch); err != nil {
-			log.Printf("bgp/policy: patch status: %v", err)
+			return ctrl.Result{}, fmt.Errorf("patch policy status (clear InvalidConfig): %w", err)
 		}
 	}
 
@@ -135,7 +135,7 @@ func (r *PeeringPolicyReconciler) Reconcile(ctx context.Context, req reconcile.R
 	policy.Status.MatchedEndpoints = int32(len(endpoints))
 	policy.Status.ActiveSessions = activeSessions
 	if err := r.Status().Patch(ctx, &policy, statusPatch); err != nil {
-		log.Printf("bgp/policy: patch status: %v", err)
+		return ctrl.Result{}, fmt.Errorf("patch policy status: %w", err)
 	}
 
 	if created > 0 || deleted > 0 {

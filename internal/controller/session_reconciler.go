@@ -145,7 +145,7 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req reconcile.Request
 		ObservedGeneration: session.Generation,
 	})
 	if err := r.Status().Patch(ctx, &session, statusPatch); err != nil {
-		log.Printf("bgp/session: patch status: %v", err)
+		return ctrl.Result{}, fmt.Errorf("patch session status: %w", err)
 	}
 
 	log.Printf("bgp/session: reconciled %s (local=%s remote=%s)", session.Name, localEP.Spec.Address, remoteEP.Spec.Address)

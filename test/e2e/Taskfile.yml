@@ -74,8 +74,10 @@ tasks:
         FROM golang:1.24-alpine AS build
         RUN apk add --no-cache git
         RUN go install github.com/osrg/gobgp/v3/cmd/gobgpd@v3.37.0
+        RUN go install github.com/osrg/gobgp/v3/cmd/gobgp@v3.37.0
         FROM alpine:3.19
         COPY --from=build /go/bin/gobgpd /usr/local/bin/gobgpd
+        COPY --from=build /go/bin/gobgp /usr/local/bin/gobgp
         ENTRYPOINT ["gobgpd"]
         DOCKERFILE
 
