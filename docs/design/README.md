@@ -19,7 +19,7 @@ stage: alpha
   - [How sessions form](#how-sessions-form)
   - [How routes are advertised](#how-routes-are-advertised)
   - [Route synchronization](#route-synchronization)
-  - [Status polling](#status-polling)
+  - [Session state watching](#session-state-watching)
   - [Resilience and re-reconciliation](#resilience-and-re-reconciliation)
   - [Startup sequence](#startup-sequence)
   - [Metrics and observability](#metrics-and-observability)
@@ -324,7 +324,8 @@ required.
    endpoint matches, and calls `AddPeer` on GoBGP.
 5. GoBGP establishes the TCP session and runs the BGP
    [finite state machine][bgp-fsm].
-6. The status poller updates session state, prefix counts, and flap counters.
+6. The peer state watcher updates session state, prefix counts, and flap
+   counters.
 
 ### How routes are advertised
 
@@ -362,22 +363,25 @@ other systems. To list these routes:
 ip -6 route show proto 196
 ```
 
-### Status polling
+### Session state watching
 
-A background goroutine polls GoBGP every 10 seconds using `ListPeer`. For
-each `BGPSession` resource, it:
+A background goroutine opens a `WatchEvent` stream on GoBGP filtered for peer
+state change events. When a peer state change arrives, the watcher:
 
-1. Resolves `spec.remoteEndpoint` to get the neighbor address.
-2. Matches the GoBGP peer state by neighbor address.
-3. Updates `status.sessionState`, `status.receivedPrefixes`,
+1. Finds the corresponding `BGPSession` resource by matching the event's
+   neighbor address against remote endpoint addresses.
+2. Updates `status.sessionState`, `status.receivedPrefixes`,
    `status.advertisedPrefixes`, `status.flapCount`, and
    `status.lastTransitionTime`.
-4. Sets the `SessionEstablished` condition.
-5. Emits Prometheus metrics.
+3. Sets the `SessionEstablished` condition.
+4. Emits Prometheus metrics.
 
-The polling approach avoids the complexity of managing a long-lived GoBGP event
-stream for status. The tradeoff is that status can lag real session state by up
-to 10 seconds.
+Because the watcher reacts to events rather than sampling on a timer, status
+reflects the actual session state immediately. Every state transition produces
+an event, so flaps are no longer invisible.
+
+If the stream breaks, the watcher reconnects after a brief delay using the
+same retry pattern as the route watcher.
 
 ### Resilience and re-reconciliation
 
@@ -399,7 +403,14 @@ it detects a failure, it:
 The `BGPConfiguration` is handled separately by the `ConfigReconciler` through
 its normal watch-based reconciliation.
 
+The `BGPConfiguration` is handled separately by the `ConfigReconciler` through
+its normal watch-based reconciliation.
+
 After `FullReconcile`, GoBGP state is fully consistent with the CRDs.
+
+The peer state watcher and route watcher each manage their own `WatchEvent`
+stream connections independently. If either stream breaks, it reconnects with
+the same retry logic — separate from the health watcher cycle.
 
 ### Startup sequence
 
@@ -409,7 +420,8 @@ After `FullReconcile`, GoBGP state is fully consistent with the CRDs.
    schemes.
 3. Registers the five reconcilers.
 4. Adds health (`/healthz`) and readiness (`/readyz`) probes.
-5. Starts background goroutines: health watcher, status poller, route watcher.
+5. Starts background goroutines: health watcher, peer state watcher, route
+   watcher.
 6. `manager.Start()` — begins watching CRDs and reconciling.
 
 The controller doesn't start reconciling until GoBGP is reachable. If GoBGP
@@ -426,6 +438,10 @@ The controller exposes Prometheus metrics on the `--metrics-addr` port:
 | `bgp_session_flaps_total` | Counter | `session` | Number of times the session left Established state |
 | `bgp_advertised_prefixes_total` | Gauge | `advertisement` | Prefixes currently in the GoBGP RIB |
 | `bgp_route_policies_applied` | Gauge | `policy` | 1 if the policy is applied to GoBGP, 0 otherwise |
+
+Session metrics (`bgp_session_state`, `bgp_received_prefixes_total`,
+`bgp_session_flaps_total`) are emitted when the peer state watcher receives a
+state change event, not on a fixed timer.
 
 Health and readiness probes are served on the `--health-addr` port:
 
@@ -465,8 +481,10 @@ correlate BGP instability with other events.
 API. Replacing GoBGP with another daemon (BIRD, FRRouting) would require
 rewriting the client layer.
 
-**Status polling lag.** Session status is polled every 10 seconds. Short-lived
-state transitions in high-frequency flap scenarios might not be captured.
+**Peer state watcher reconnection gap.** If the `WatchEvent` stream breaks and
+the watcher is reconnecting, state changes during that window aren't captured
+until the stream reopens. The gap is short (bounded by the retry interval),
+but a rapid flap during reconnection won't appear in the status history.
 
 **Session ownership model.** Each controller instance reconciles only sessions
 where `spec.localEndpoint` matches its `--local-endpoint` flag. If a
