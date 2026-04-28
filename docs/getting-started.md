@@ -18,7 +18,7 @@ Make sure you have:
 - A Kubernetes cluster with IPv6 enabled (each node needs a global-scope IPv6
   address)
 - `kubectl` configured to reach your cluster
-- Access to the BGP controller image (`ghcr.io/datum-cloud/bgp:latest`) and a
+- Access to the BGP controller image (`ghcr.io/milo-os/bgp:latest`) and a
   GoBGP container image (`gobgpd:latest`)
 
 ---

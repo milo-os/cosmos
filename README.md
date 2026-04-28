@@ -124,7 +124,7 @@ For a complete walkthrough, see the
 CGO_ENABLED=0 go build -o bgp ./cmd/bgp
 
 # Build the container image
-docker build -f build/Dockerfile -t ghcr.io/datum-cloud/bgp:latest .
+docker build -f build/Dockerfile -t ghcr.io/milo-os/bgp:latest .
 ```
 
 <!-- References -->

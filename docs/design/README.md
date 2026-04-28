@@ -32,7 +32,7 @@ stage: alpha
 
 ## Summary
 
-The [BGP][bgp] control plane (`datum-cloud/bgp`) manages BGP topology
+The [BGP][bgp] control plane (`milo-os/bgp`) manages BGP topology
 declaratively through Kubernetes [Custom Resource Definitions][crds] (CRDs) on
 any Kubernetes-compatible API server, powered by [GoBGP][gobgp].
 
