@@ -132,35 +132,13 @@ func handlePeerEvent(ctx context.Context, k8sClient client.Client, peer *gobgpap
 		matched = true
 
 		sessionState, isEstablished := peerStateToString(peer)
-		prevState := sess.Status.SessionState
+
+		// Detect flap using the existing condition before patching.
+		prevCondition := apimeta.FindStatusCondition(sess.Status.Conditions, bgpv1alpha1.BGPSessionEstablished)
+		wasEstablished := prevCondition != nil && prevCondition.Status == metav1.ConditionTrue
 
 		patch := client.MergeFrom(sess.DeepCopy())
-		sess.Status.SessionState = sessionState
 
-		// Count received/advertised prefixes across all address families.
-		var rxPrefixes, txPrefixes int64
-		for _, af := range peer.AfiSafis {
-			if af.State != nil {
-				rxPrefixes += int64(af.State.Received)
-				txPrefixes += int64(af.State.Advertised)
-			}
-		}
-		sess.Status.ReceivedPrefixes = rxPrefixes
-		sess.Status.AdvertisedPrefixes = txPrefixes
-
-		// Increment flap counter when transitioning away from Established.
-		if prevState == "Established" && !isEstablished {
-			sess.Status.FlapCount++
-			RecordSessionFlap(sess.Name)
-		}
-
-		// Track session state transition time.
-		if prevState != sessionState {
-			now := metav1.Now()
-			sess.Status.LastTransitionTime = &now
-		}
-
-		// Set SessionEstablished condition.
 		condStatus := metav1.ConditionFalse
 		if isEstablished {
 			condStatus = metav1.ConditionTrue
@@ -176,9 +154,19 @@ func handlePeerEvent(ctx context.Context, k8sClient client.Client, peer *gobgpap
 			log.Printf("bgp/status: patch %s status: %v", sess.Name, err)
 		}
 
-		// Emit Prometheus metrics keyed on session name.
+		// Count received prefixes for metrics.
+		var rxPrefixes int64
+		for _, af := range peer.AfiSafis {
+			if af.State != nil {
+				rxPrefixes += int64(af.State.Received)
+			}
+		}
+
 		RecordSessionState(sess.Name, sessionState)
 		RecordReceivedPrefixes(sess.Name, rxPrefixes)
+		if wasEstablished && !isEstablished {
+			RecordSessionFlap(sess.Name)
+		}
 
 		// Only one session per neighbor address — no need to continue.
 		break
