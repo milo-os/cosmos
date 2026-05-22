@@ -1,0 +1,20 @@
+# BGPInstance for the FRR underlay plane on a POP node.
+#
+# This instance configures the FRR daemon as an IPv6 unicast BGP speaker.
+# The underlay plane provides fabric routing between nodes and ToR switches.
+#
+# providerSelector targets BGPProvider resources with the underlay/frr labels,
+# which cosmos bootstraps on each node at startup.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPInstance
+metadata:
+  name: underlay
+spec:
+  providerSelector:
+    matchLabels:
+      bgp.datum.net/plane: underlay
+      bgp.miloapis.com/daemon: frr
+  asNumber: 65000
+  addressFamilies:
+    - afi: IPv6
+      safi: Unicast

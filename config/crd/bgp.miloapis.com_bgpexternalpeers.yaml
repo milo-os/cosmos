@@ -4,34 +4,36 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgpconfigurations.bgp.miloapis.com
+  name: bgpexternalpeers.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPConfiguration
-    listKind: BGPConfigurationList
-    plural: bgpconfigurations
+    kind: BGPExternalPeer
+    listKind: BGPExternalPeerList
+    plural: bgpexternalpeers
     shortNames:
-    - bgpconfig
-    singular: bgpconfiguration
+    - bgpep
+    singular: bgpexternalpeer
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.address
+      name: Address
+      type: string
     - jsonPath: .spec.asNumber
       name: AS
       type: integer
-    - jsonPath: .spec.listenPort
-      name: Port
-      type: integer
-    - jsonPath: .status.conditions[?(@.type=="SpeakerReady")].status
-      name: Ready
-      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
-          BGPConfiguration declares the local BGP speaker identity for the cluster.
-          There should be exactly one BGPConfiguration per cluster.
+          BGPExternalPeer is a registry entry for a BGP peer outside the cosmos-managed fleet.
+          Lives only in the management cluster. Referenced by management cluster cosmos when writing
+          BGPSession.spec.toPeers — the address and ASN are resolved at session write time.
+          Never propagated to member clusters.
         properties:
           apiVersion:
             description: |-
@@ -51,76 +53,32 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              BGPConfigurationSpec declares the local BGP speaker identity.
-              There should be exactly one BGPConfiguration per cluster.
+            description: BGPExternalPeerSpec defines the external peer's address and
+              ASN.
             properties:
-              addressFamilies:
-                description: |-
-                  AddressFamilies lists the address families the speaker should activate.
-                  Defaults to IPv6 unicast only.
-                items:
-                  description: AddressFamily identifies a BGP address family.
-                  properties:
-                    afi:
-                      description: AFI is the Address Family Indicator.
-                      enum:
-                      - IPv4
-                      - IPv6
-                      type: string
-                    safi:
-                      default: Unicast
-                      description: SAFI is the Subsequent Address Family Indicator.
-                      enum:
-                      - Unicast
-                      - Multicast
-                      type: string
-                  required:
-                  - afi
-                  type: object
-                type: array
+              address:
+                description: Address is the peer's BGP address.
+                format: ipv6
+                type: string
               asNumber:
-                description: |-
-                  ASNumber is the local AS number for this BGP speaker.
-                  For single-cluster iBGP, all nodes share the same AS number.
-                  For multi-cluster eBGP, each cluster has a unique AS number.
-                format: int32
+                description: ASNumber is the peer's autonomous system number.
+                format: int64
                 maximum: 4294967295
                 minimum: 1
                 type: integer
-              listenPort:
-                default: 1790
-                description: |-
-                  ListenPort is the TCP port GoBGP listens on for BGP sessions.
-                  Defaults to 1790 (Galactic convention, non-privileged).
-                format: int32
-                maximum: 65535
-                minimum: 1
-                type: integer
-              routerID:
-                description: |-
-                  RouterID is the BGP router ID. Required when routerIDSource is "Manual".
-                  Must be a valid IPv4 address in dotted-decimal notation (BGP convention).
-                type: string
-              routerIDSource:
-                default: NodeIP
-                description: |-
-                  RouterIDSource controls how the router ID is determined.
-                  "NodeIP" uses the node's IPv6 InternalIP (default).
-                  "Manual" requires routerID to be set explicitly.
-                enum:
-                - NodeIP
-                - Manual
+              description:
+                description: Description is a human-readable note about this peer.
+                maxLength: 256
                 type: string
             required:
+            - address
             - asNumber
             type: object
           status:
-            description: BGPConfigurationStatus reflects the observed state of the
-              BGP speaker.
+            description: BGPExternalPeerStatus defines the observed state of BGPExternalPeer.
             properties:
               conditions:
-                description: Conditions describe the current state of the BGP configuration.
+                description: Conditions reflect the current state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -179,18 +137,18 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              observedASNumber:
-                description: ObservedASNumber is the AS number currently configured
-                  in GoBGP.
+              referencedBy:
+                description: ReferencedBy is the count of BGPSession resources referencing
+                  this external peer.
                 format: int32
                 type: integer
-              observedRouterID:
-                description: ObservedRouterID is the router ID currently configured
-                  in GoBGP.
-                type: string
+              referencedByList:
+                description: ReferencedByList names up to 50 referencing BGPSession
+                  resources.
+                items:
+                  type: string
+                type: array
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true

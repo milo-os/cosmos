@@ -1,0 +1,250 @@
+# rejected-configurations.yaml
+#
+# This file documents invalid or unsupported configurations and the error or
+# condition each produces. Use it as a reference for what NOT to do.
+#
+# Each section is a separate YAML document separated by ---.
+# None of these should be applied to a running cluster.
+
+---
+# INVALID: BGPProvider with both frr and gobgp set — rejected by CEL validation
+#
+# A BGPProvider may configure at most one daemon backend. Setting both frr and
+# gobgp in the same spec violates the CEL rule:
+#   (has(self.frr) && !has(self.gobgp)) || (!has(self.frr) && has(self.gobgp))
+# The API server rejects the resource at admission time.
+apiVersion: providers.bgp.miloapis.com/v1alpha1
+kind: BGPProvider
+metadata:
+  name: invalid-dual-daemon
+spec:
+  type: FRR
+  frr:
+    endpoint: "localhost:50051"
+  gobgp:
+    endpoint: "localhost:50052"   # ERROR: cannot set both frr and gobgp
+
+---
+# INVALID: BGPProvider with a non-loopback endpoint — RemoteProviderNotSupported condition
+#
+# cosmos only supports local daemon connections. If the endpoint resolves to a
+# non-loopback address (anything other than localhost or 127.0.0.1/::1), the
+# controller sets the RemoteProviderNotSupported condition and does not attempt
+# to connect. The resource is accepted by the API but will never become Ready.
+apiVersion: providers.bgp.miloapis.com/v1alpha1
+kind: BGPProvider
+metadata:
+  name: invalid-remote-endpoint
+spec:
+  type: GoBGP
+  gobgp:
+    endpoint: "10.0.1.5:50051"   # ERROR: remote address not supported
+# Expected status:
+#   conditions:
+#     - type: RemoteProviderNotSupported
+#       status: "True"
+#       reason: RemoteEndpoint
+#       message: "endpoint must be a loopback address"
+
+---
+# INVALID: BGPPeer with both ebgpMultihop and ttlSecurity set — rejected by CEL validation
+#
+# ebgpMultihop and ttlSecurity are mutually exclusive eBGP session options.
+# Setting both violates the CEL rule:
+#   !has(self.ebgpMultihop) || !has(self.ttlSecurity)
+# The API server rejects the resource at admission time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPeer
+metadata:
+  name: invalid-dual-ebgp-option
+spec:
+  providerRef:
+    name: node-1-frr
+  address: "2001:db8:fabric::1"
+  asNumber: 65000
+  ebgpMultihop:
+    ttl: 2
+  ttlSecurity:
+    ttl: 255                      # ERROR: cannot set both ebgpMultihop and ttlSecurity
+
+---
+# INVALID: BGPInstance with routerIDSource: Manual and no routerID — rejected by CEL validation
+#
+# When routerIDSource is Manual, the routerID field is required. The CEL rule:
+#   self.routerIDSource != 'Manual' || has(self.routerID)
+# The API server rejects the resource at admission time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPInstance
+metadata:
+  name: invalid-manual-no-router-id
+spec:
+  providerSelector:
+    matchLabels:
+      bgp.datum.net/plane: underlay
+  asNumber: 65000
+  routerIDSource: Manual
+  # routerID: "10.0.0.1"         # ERROR: routerID is required when routerIDSource is Manual
+
+---
+# INVALID: BGPPeer with both providerRef and providerSelector set — rejected by CEL validation
+#
+# A BGPPeer must use exactly one provider selection mechanism. Setting both
+# providerRef and providerSelector violates the CEL rule:
+#   has(self.providerRef) != has(self.providerSelector)
+# The API server rejects the resource at admission time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPeer
+metadata:
+  name: invalid-dual-provider-selection
+spec:
+  providerRef:
+    name: node-1-frr
+  providerSelector:                # ERROR: cannot set both providerRef and providerSelector
+    matchLabels:
+      bgp.datum.net/plane: underlay
+  address: "2001:db8::1"
+  asNumber: 65000
+
+---
+# INVALID: BGPAdvertisement referencing a VPN instance — UnsupportedAddressFamily condition
+#
+# BGPAdvertisement is for infrastructure prefix advertisement (loopbacks, SRv6
+# locators) over IPv6 unicast. It does not support VPN address families.
+# If the referenced BGPInstance uses VPNUnicast, the controller sets the
+# UnsupportedAddressFamily condition. The resource is accepted by the API but
+# will not be reconciled.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPAdvertisement
+metadata:
+  name: invalid-vpn-advertisement
+spec:
+  providerSelector:
+    matchLabels:
+      bgp.datum.net/plane: overlay
+      bgp.miloapis.com/daemon: gobgp
+  instanceRef: overlay             # ERROR: overlay instance uses VPNUnicast, not supported here
+  prefixes:
+    - cidr: "2001:db8:loopback::/128"
+# Expected status:
+#   providers:
+#     node-1-gobgp:
+#       conditions:
+#         - type: UnsupportedAddressFamily
+#           status: "True"
+#           reason: VPNSAFINotSupported
+
+---
+# INVALID: BGPInstance with spec.routeReflector in a POP cluster — RouteReflectorInPOPCluster condition
+#
+# Route reflectors are infra cluster components. Setting spec.routeReflector
+# on a BGPInstance in a POP cluster is a configuration error. The controller
+# sets the RouteReflectorInPOPCluster condition and does not configure RR mode
+# in the daemon.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPInstance
+metadata:
+  name: invalid-rr-in-pop
+spec:
+  providerSelector:
+    matchLabels:
+      bgp.datum.net/plane: underlay
+      bgp.datum.net/pop: jp-east-1
+      bgp.miloapis.com/daemon: frr
+  asNumber: 65000
+  addressFamilies:
+    - afi: IPv6
+      safi: Unicast
+  routeReflector:
+    clusterID: "10.0.1.1"         # ERROR: routeReflector is not supported in POP clusters
+# Expected status:
+#   providers:
+#     node-1-frr:
+#       conditions:
+#         - type: RouteReflectorInPOPCluster
+#           status: "True"
+#           reason: UnsupportedClusterRole
+
+---
+# WARNING: BGPPeer written directly without management labels — logged as warning, not API-rejected
+#
+# BGPPeer resources must only be created by the SessionReconciler. Creating one
+# manually bypasses session intent tracking in the management cluster. The API
+# server accepts the resource (there is no admission webhook rejecting it), and
+# the PeerReconciler will reconcile it against the daemon, potentially creating
+# unexpected BGP sessions.
+#
+# The controller logs a warning when it encounters a BGPPeer without the
+# management labels set by the SessionReconciler:
+#   bgp.miloapis.com/managed-by: session-reconciler
+#   bgp.miloapis.com/session: <session-name>
+#
+# Do not do this. Create a BGPSession in the management cluster instead.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPeer
+metadata:
+  name: manually-created-peer      # WARNING: missing management labels
+spec:
+  providerRef:
+    name: node-1-frr
+  address: "2001:db8::99"
+  asNumber: 65000
+
+---
+# BLOCKED: Deletion of BGPExternalPeer still referenced by a BGPSession — DeletionBlocked condition
+#
+# If a BGPExternalPeer is still referenced in the toPeers list of any BGPSession,
+# the cleanup finalizer will not remove itself and the resource stays in
+# Terminating state. The DeletionBlocked condition is set.
+#
+# Resolution: update or delete the referencing BGPSession first, then retry
+# deletion of the BGPExternalPeer.
+#
+# To force removal (destructive — orphans daemon state):
+#   kubectl patch bgpexternalpeer/tor-jp-east-1-rack-a-1 \
+#     --type=merge -p '{"metadata":{"finalizers":[]}}'
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPExternalPeer
+metadata:
+  name: tor-jp-east-1-rack-a-1     # still referenced by BGPSession/node-1-to-tor-1
+  finalizers:
+    - cosmos.bgp.miloapis.com/cleanup
+  deletionTimestamp: "2024-01-01T12:00:00Z"
+spec:
+  address: "2001:db8:fabric::1"
+  asNumber: 65000
+# Expected status:
+#   conditions:
+#     - type: DeletionBlocked
+#       status: "True"
+#       reason: ReferencedBySession
+#       message: "BGPSession/node-1-to-tor-1 references this peer"
+
+---
+# BLOCKED: Deletion of BGPProvider still referenced by BGPInstance — deletion blocked
+#
+# A BGPProvider cannot be deleted while BGPInstance, BGPPeer, BGPAdvertisement,
+# or BGPRoutePolicy resources still select it via providerRef or providerSelector.
+# The cleanup finalizer checks for active dependents before removing itself.
+#
+# Resolution: delete or update all dependent resources first.
+#
+# To force removal (destructive — orphans daemon state):
+#   kubectl patch bgpprovider/node-1-frr \
+#     --type=merge -p '{"metadata":{"finalizers":[]}}'
+apiVersion: providers.bgp.miloapis.com/v1alpha1
+kind: BGPProvider
+metadata:
+  name: node-1-frr                 # still selected by BGPInstance/underlay
+  finalizers:
+    - cosmos.bgp.miloapis.com/cleanup
+  deletionTimestamp: "2024-01-01T12:00:00Z"
+spec:
+  type: FRR
+  frr:
+    endpoint: "localhost:50051"
+# Expected status:
+#   conditions:
+#     - type: DeletionBlocked
+#       status: "True"
+#       reason: ReferencedByInstance
+#       message: "BGPInstance/underlay selects this provider"

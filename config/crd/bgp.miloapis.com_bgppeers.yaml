@@ -4,24 +4,24 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgproutepolicies.bgp.miloapis.com
+  name: bgppeers.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPRoutePolicy
-    listKind: BGPRoutePolicyList
-    plural: bgproutepolicies
+    kind: BGPPeer
+    listKind: BGPPeerList
+    plural: bgppeers
     shortNames:
-    - bgprp
-    singular: bgproutepolicy
+    - bgppr
+    singular: bgppeer
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.instanceRef
-      name: Instance
+    - jsonPath: .spec.address
+      name: Address
       type: string
-    - jsonPath: .spec.priority
-      name: Priority
+    - jsonPath: .spec.asNumber
+      name: AS
       type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -29,8 +29,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: BGPRoutePolicy applies import/export route policy to selected
-          BGPPeer resources.
+        description: |-
+          BGPPeer configures one side of a BGP session on matched providers.
+          Generated exclusively by SessionReconciler from BGPSession resources.
+          Never written directly.
         properties:
           apiVersion:
             description: |-
@@ -50,168 +52,92 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPRoutePolicySpec defines the desired route policy state.
+            description: BGPPeerSpec defines the desired state of BGPPeer.
             properties:
-              exportStatements:
-                description: ExportStatements are evaluated on routes sent to peers.
-                items:
-                  description: PolicyStatement is a single route policy statement
-                    with match conditions and actions.
-                  properties:
-                    actions:
-                      description: Actions define what to do with matched routes.
-                      properties:
-                        routeDisposition:
-                          description: 'RouteDisposition is the action to take: accept
-                            or reject.'
-                          enum:
-                          - Accept
-                          - Reject
-                          type: string
-                        setCommunity:
-                          description: SetCommunity adds or replaces BGP communities.
-                          properties:
-                            communities:
-                              description: Communities is the list of community values
-                                to set.
-                              items:
-                                type: string
-                              type: array
-                            method:
-                              description: Method controls whether communities are
-                                added to or replace existing ones.
-                              enum:
-                              - Add
-                              - Replace
-                              - Remove
-                              type: string
-                          required:
-                          - communities
-                          - method
-                          type: object
-                        setLocalPreference:
-                          description: SetLocalPreference sets the local preference
-                            attribute.
-                          format: int32
-                          type: integer
-                        setMED:
-                          description: SetMED sets the Multi-Exit Discriminator attribute.
-                          format: int32
-                          type: integer
-                        setNextHop:
-                          description: SetNextHop sets the next-hop address.
-                          type: string
-                      required:
-                      - routeDisposition
-                      type: object
-                    conditions:
-                      description: Conditions define what routes this statement matches.
-                      properties:
-                        communitySet:
-                          description: CommunitySet is a community set name to match.
-                          type: string
-                        nextHopSet:
-                          description: NextHopSet is a next-hop set name to match.
-                          type: string
-                        prefixSets:
-                          description: PrefixSets is a list of prefix set names to
-                            match.
-                          items:
-                            type: string
-                          type: array
-                      type: object
-                    name:
-                      description: Name is the statement identifier.
-                      type: string
-                  required:
-                  - actions
-                  - name
-                  type: object
-                type: array
-              importStatements:
-                description: ImportStatements are evaluated on routes received from
-                  peers.
-                items:
-                  description: PolicyStatement is a single route policy statement
-                    with match conditions and actions.
-                  properties:
-                    actions:
-                      description: Actions define what to do with matched routes.
-                      properties:
-                        routeDisposition:
-                          description: 'RouteDisposition is the action to take: accept
-                            or reject.'
-                          enum:
-                          - Accept
-                          - Reject
-                          type: string
-                        setCommunity:
-                          description: SetCommunity adds or replaces BGP communities.
-                          properties:
-                            communities:
-                              description: Communities is the list of community values
-                                to set.
-                              items:
-                                type: string
-                              type: array
-                            method:
-                              description: Method controls whether communities are
-                                added to or replace existing ones.
-                              enum:
-                              - Add
-                              - Replace
-                              - Remove
-                              type: string
-                          required:
-                          - communities
-                          - method
-                          type: object
-                        setLocalPreference:
-                          description: SetLocalPreference sets the local preference
-                            attribute.
-                          format: int32
-                          type: integer
-                        setMED:
-                          description: SetMED sets the Multi-Exit Discriminator attribute.
-                          format: int32
-                          type: integer
-                        setNextHop:
-                          description: SetNextHop sets the next-hop address.
-                          type: string
-                      required:
-                      - routeDisposition
-                      type: object
-                    conditions:
-                      description: Conditions define what routes this statement matches.
-                      properties:
-                        communitySet:
-                          description: CommunitySet is a community set name to match.
-                          type: string
-                        nextHopSet:
-                          description: NextHopSet is a next-hop set name to match.
-                          type: string
-                        prefixSets:
-                          description: PrefixSets is a list of prefix set names to
-                            match.
-                          items:
-                            type: string
-                          type: array
-                      type: object
-                    name:
-                      description: Name is the statement identifier.
-                      type: string
-                  required:
-                  - actions
-                  - name
-                  type: object
-                type: array
-              instanceRef:
-                description: InstanceRef is the name of the BGPInstance this policy
-                  applies to.
+              address:
+                description: Address is the peer's BGP address.
+                format: ipv6
                 type: string
-              peerSelector:
-                description: PeerSelector selects BGPPeer resources this policy applies
-                  to.
+              addressFamilies:
+                description: |-
+                  AddressFamilies overrides the instance address families for this peer.
+                  If absent, inherited from the referenced BGPInstance.
+                items:
+                  description: AddressFamily represents a BGP address family (AFI/SAFI
+                    pair).
+                  properties:
+                    afi:
+                      description: AFI is the Address Family Identifier.
+                      enum:
+                      - IPv4
+                      - IPv6
+                      type: string
+                    safi:
+                      description: SAFI is the Subsequent Address Family Identifier.
+                      enum:
+                      - Unicast
+                      - VPNUnicast
+                      type: string
+                  required:
+                  - afi
+                  - safi
+                  type: object
+                type: array
+              allowAsIn:
+                description: |-
+                  AllowAsIn permits the peer's AS number to appear in received AS paths.
+                  Used on underlay eBGP sessions with a global AS.
+                format: int32
+                maximum: 10
+                minimum: 1
+                type: integer
+              asNumber:
+                description: ASNumber is the peer's autonomous system number.
+                format: int64
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              ebgpMultihop:
+                description: |-
+                  EBGPMultihop sets the eBGP multihop TTL.
+                  Mutually exclusive with ttlSecurity. Invalid on iBGP sessions.
+                format: int32
+                maximum: 255
+                minimum: 1
+                type: integer
+              instanceRef:
+                description: InstanceRef is the name of the BGPInstance for this peer
+                  session.
+                type: string
+              passive:
+                description: Passive enables passive mode — do not initiate the TCP
+                  connection.
+                type: boolean
+              passwordSecretRef:
+                description: PasswordSecretRef references a Secret containing the
+                  BGP session password.
+                properties:
+                  key:
+                    description: Key is the key within the Secret.
+                    type: string
+                  name:
+                    description: Name is the name of the Secret.
+                    type: string
+                required:
+                - key
+                - name
+                type: object
+              providerRef:
+                description: |-
+                  ProviderRef names a single BGPProvider.
+                  Use for topology-specific sessions (underlay eBGP, RR client designations).
+                  Mutually exclusive with providerSelector.
+                type: string
+              providerSelector:
+                description: |-
+                  ProviderSelector selects multiple BGPProvider resources.
+                  Use for cluster-wide sessions (e.g. all overlay providers peer with same RRs).
+                  Mutually exclusive with providerRef.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -256,20 +182,50 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              priority:
-                default: 100
+              routeReflectorClient:
                 description: |-
-                  Priority determines policy ordering. Higher priority policies are applied first.
-                  Equal priority: sorted by metadata.name ascending.
+                  RouteReflectorClient designates the remote peer as an RR client.
+                  Set on RR-side peers only. Never on client-side peers.
+                type: boolean
+              timers:
+                description: Timers overrides the instance timer defaults for this
+                  peer.
+                properties:
+                  holdTime:
+                    description: HoldTime overrides the instance default hold time.
+                    format: int32
+                    minimum: 3
+                    type: integer
+                  keepalive:
+                    description: Keepalive overrides the instance default keepalive
+                      interval.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
+              ttlSecurity:
+                description: |-
+                  TTLSecurity sets the TTL security hop count.
+                  Mutually exclusive with ebgpMultihop.
                 format: int32
-                maximum: 1000
-                minimum: 0
+                maximum: 254
+                minimum: 1
                 type: integer
             required:
+            - address
+            - asNumber
             - instanceRef
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of providerRef or providerSelector must be set
+              rule: has(self.providerRef) != has(self.providerSelector)
+            - message: ebgpMultihop and ttlSecurity are mutually exclusive
+              rule: '!(has(self.ebgpMultihop) && has(self.ttlSecurity))'
+            - message: passwordSecretRef requires both name and key
+              rule: '!has(self.passwordSecretRef) || (has(self.passwordSecretRef.name)
+                && has(self.passwordSecretRef.key))'
           status:
-            description: BGPRoutePolicyStatus defines the observed state of BGPRoutePolicy.
+            description: BGPPeerStatus defines the observed state of BGPPeer.
             properties:
               providers:
                 description: Providers holds per-provider reconciliation status.

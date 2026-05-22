@@ -11,23 +11,25 @@ import (
 	gobgpapi "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/apiutil"
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	bgpnetlink "go.miloapis.com/bgp/internal/netlink"
-	bgpcontroller "go.miloapis.com/bgp/internal/controller"
 )
 
 const routeWatchRetryInterval = 2 * time.Second
 
-// RunRouteWatcher streams BGP path events from GoBGP and programs/removes
-// netlink routes (proto 196) for received prefixes. It automatically reconnects
-// the event stream on error.
+// RunRouteWatcher connects directly to a GoBGP gRPC endpoint, streams BGP path
+// events, and programs/removes netlink routes (proto 196) for received prefixes.
+// It automatically reconnects the event stream on error.
 //
+// endpoint is the GoBGP gRPC address (e.g. "localhost:50051").
 // srv6Net is this node's own prefix (e.g. a /48); routes matching it are skipped
 // so the node does not install a route to itself. Pass an empty string to disable
 // the self-route filter.
 //
 // This function blocks until ctx is cancelled.
-func RunRouteWatcher(ctx context.Context, gobgp *bgpcontroller.GoBGPClient, srv6Net string) {
+func RunRouteWatcher(ctx context.Context, endpoint, srv6Net string) {
 	var ownPrefix *net.IPNet
 	if srv6Net != "" {
 		_, ownPrefix, _ = net.ParseCIDR(srv6Net)
@@ -40,9 +42,9 @@ func RunRouteWatcher(ctx context.Context, gobgp *bgpcontroller.GoBGPClient, srv6
 		default:
 		}
 
-		c := gobgp.Client()
-		if c == nil {
-			log.Printf("bgp/route: GoBGP not connected, retrying in %s", routeWatchRetryInterval)
+		c, conn, err := dialGoBGP(ctx, endpoint)
+		if err != nil {
+			log.Printf("bgp/route: connect to GoBGP at %s: %v — retrying in %s", endpoint, err, routeWatchRetryInterval)
 			select {
 			case <-ctx.Done():
 				return
@@ -54,9 +56,11 @@ func RunRouteWatcher(ctx context.Context, gobgp *bgpcontroller.GoBGPClient, srv6
 		if err := watchAndProgram(ctx, c, ownPrefix); err != nil {
 			select {
 			case <-ctx.Done():
+				conn.Close()
 				return
 			default:
 				log.Printf("bgp/route: stream error: %v — restarting in %s", err, routeWatchRetryInterval)
+				conn.Close()
 				select {
 				case <-ctx.Done():
 					return
@@ -65,6 +69,21 @@ func RunRouteWatcher(ctx context.Context, gobgp *bgpcontroller.GoBGPClient, srv6
 			}
 		}
 	}
+}
+
+// dialGoBGP establishes a gRPC connection to the GoBGP endpoint.
+func dialGoBGP(ctx context.Context, endpoint string) (gobgpapi.GobgpApiClient, *grpc.ClientConn, error) {
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial: %w", err)
+	}
+	c := gobgpapi.NewGobgpApiClient(conn)
+	// Ping to verify connectivity.
+	if _, err := c.GetBgp(ctx, &gobgpapi.GetBgpRequest{}); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("ping: %w", err)
+	}
+	return c, conn, nil
 }
 
 // watchAndProgram opens a WatchEvent stream on GoBGP and programs netlink routes
@@ -105,9 +124,6 @@ func watchAndProgram(ctx context.Context, client gobgpapi.GobgpApiClient, ownPre
 		return fmt.Errorf("WatchEvent: %w", err)
 	}
 
-	// ribInitPrefixes tracks prefixes seen during the initial RIB dump so we can
-	// garbage-collect kernel routes that are no longer in the RIB. Once GC has
-	// run once (after the first event message), initGCDone is set to true.
 	ribInitPrefixes := make(map[string]struct{})
 	initGCDone := false
 
@@ -146,7 +162,6 @@ func watchAndProgram(ctx context.Context, client gobgpapi.GobgpApiClient, ownPre
 			}
 
 			if !initGCDone {
-				// Collect prefixes seen in the init dump for stale-GC comparison.
 				ribInitPrefixes[prefix.String()] = struct{}{}
 			}
 
@@ -165,10 +180,6 @@ func watchAndProgram(ctx context.Context, client gobgpapi.GobgpApiClient, ownPre
 			}
 		}
 
-		// After processing the first event message (which contains the full initial
-		// RIB dump from GoBGP when Init=true), garbage-collect any kernel routes
-		// that were not present in the RIB. These are stale routes from a previous
-		// operator lifetime.
 		if !initGCDone {
 			initGCDone = true
 			for prefix, gw := range knownPrefixes {

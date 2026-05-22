@@ -1,0 +1,28 @@
+# Written by management cluster cosmos. toPeers resolved from BGPExternalPeer at write time.
+# Karmada propagates to pop-jp-east-1 based on fromProviderSelector labels.
+#
+# This BGPSession establishes the underlay IPv6 unicast peering between node-1
+# and the top-of-rack switch in rack A. The SessionReconciler generates a
+# BGPPeer resource on the POP cluster for the local side and the remote side.
+#
+# allowAsIn: 1 allows the fabric AS to appear once in received AS paths,
+# which is required in some ToR iBGP configurations.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPSession
+metadata:
+  name: node-1-to-tor-1
+spec:
+  fromProviderSelector:
+    matchLabels:
+      bgp.miloapis.com/node: node-1
+      bgp.miloapis.com/daemon: frr
+  fromInstanceRef: underlay
+  toPeers:
+    - address: "2001:db8:fabric::1"   # resolved from BGPExternalPeer at write time
+      asNumber: 65000
+      instanceRef: underlay
+      routeReflectorClient: false
+  addressFamilies:
+    - afi: IPv6
+      safi: Unicast
+  allowAsIn: 1

@@ -4,478 +4,304 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
+	"sort"
 
-	gobgpapi "github.com/osrg/gobgp/v3/api"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
+	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
+	"go.miloapis.com/bgp/internal/provider"
 )
 
-const (
-	// RoutePolicyFinalizer ensures GoBGP policy cleanup before CRD deletion.
-	RoutePolicyFinalizer = "bgp.miloapis.com/routepolicy-cleanup"
-
-	// BGPRoutePolicyApplied is the condition type indicating policy application state.
-	BGPRoutePolicyApplied = "Applied"
-)
-
-// RoutePolicyReconciler reconciles BGPRoutePolicy resources into GoBGP policy calls.
-// It maps the CRD's three-layer model (PrefixSets → Policies → PolicyAssignments)
-// onto GoBGP's equivalent gRPC API.
+// RoutePolicyReconciler reconciles BGPRoutePolicy resources.
+// It resolves peer selectors, orders all policies by priority, and programs them
+// on each matched provider.
+//
+// Active in: pop, infra.
 type RoutePolicyReconciler struct {
 	client.Client
-	GoBGP *GoBGPClient
+	Scheme   *runtime.Scheme
+	Registry *provider.Registry
 }
 
 // Reconcile handles BGPRoutePolicy events.
 func (r *RoutePolicyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	var policy bgpv1alpha1.BGPRoutePolicy
-	if err := r.Get(ctx, req.NamespacedName, &policy); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
-	c := r.GoBGP.Client()
-	if c == nil {
-		return ctrl.Result{}, fmt.Errorf("GoBGP not connected")
+	var pol bgpv1alpha1.BGPRoutePolicy
+	if err := r.Get(ctx, req.NamespacedName, &pol); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// Handle deletion.
-	if !policy.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, r.handleDelete(ctx, c, &policy)
+	if !pol.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, r.handleDelete(ctx, &pol)
 	}
 
 	// Ensure finalizer.
-	if !controllerutil.ContainsFinalizer(&policy, RoutePolicyFinalizer) {
-		patch := client.MergeFrom(policy.DeepCopy())
-		controllerutil.AddFinalizer(&policy, RoutePolicyFinalizer)
-		if err := r.Patch(ctx, &policy, patch); err != nil {
+	if !controllerutil.ContainsFinalizer(&pol, Finalizer) {
+		patch := client.MergeFrom(pol.DeepCopy())
+		controllerutil.AddFinalizer(&pol, Finalizer)
+		if err := r.Patch(ctx, &pol, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
 		}
-		if err := r.Get(ctx, req.NamespacedName, &policy); err != nil {
+		if err := r.Get(ctx, req.NamespacedName, &pol); err != nil {
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 
-	// Step 1: Upsert DefinedSets (one PrefixSet per statement with prefixSet).
-	if err := r.upsertDefinedSets(ctx, c, &policy); err != nil {
-		return r.setAppliedFalse(ctx, &policy, fmt.Sprintf("upsert defined sets: %v", err))
+	// Resolve BGPInstance.
+	var instance bgpv1alpha1.BGPInstance
+	if err := r.Get(ctx, types.NamespacedName{Name: pol.Spec.InstanceRef}, &instance); err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, err
+		}
+		log.Printf("bgp/routepolicy: %s instance %s not found", pol.Name, pol.Spec.InstanceRef)
+		return ctrl.Result{}, nil
 	}
 
-	// Step 2: Upsert the Policy.
-	if err := r.upsertPolicy(ctx, c, &policy); err != nil {
-		return r.setAppliedFalse(ctx, &policy, fmt.Sprintf("upsert policy: %v", err))
-	}
-
-	// Step 3: Resolve peer addresses if peerSelector is set.
-	peerAddresses, err := r.resolvePeerAddresses(ctx, &policy)
+	// List providers matching the BGPInstance's providerSelector.
+	sel, err := metav1.LabelSelectorAsSelector(&instance.Spec.ProviderSelector)
 	if err != nil {
-		return r.setAppliedFalse(ctx, &policy, fmt.Sprintf("resolve peer addresses: %v", err))
+		return ctrl.Result{}, fmt.Errorf("invalid providerSelector: %w", err)
 	}
 
-	// Step 4: Upsert PolicyAssignments.
-	if err := r.upsertPolicyAssignments(ctx, c, &policy, peerAddresses); err != nil {
-		return r.setAppliedFalse(ctx, &policy, fmt.Sprintf("upsert assignments: %v", err))
+	var providerList providersv1alpha1.BGPProviderList
+	if err := r.List(ctx, &providerList, &client.ListOptions{LabelSelector: sel}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("list BGPProviders: %w", err)
 	}
 
-	// Update status.
-	statusPatch := client.MergeFrom(policy.DeepCopy())
-	apimeta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
-		Type:               BGPRoutePolicyApplied,
-		Status:             metav1.ConditionTrue,
-		Reason:             "Applied",
-		Message:            fmt.Sprintf("policy %s applied to GoBGP", gobgpPolicyName(policy.Name)),
-		ObservedGeneration: policy.Generation,
-	})
-	if err := r.Status().Patch(ctx, &policy, statusPatch); err != nil {
-		log.Printf("bgp/routepolicy: patch status: %v", err)
+	// Resolve matched BGPPeer resources via peerSelector (if set).
+	var matchedPeers []bgpv1alpha1.BGPPeer
+	noMatchingPeers := false
+	if pol.Spec.PeerSelector != nil {
+		peerSel, err := metav1.LabelSelectorAsSelector(pol.Spec.PeerSelector)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("invalid peerSelector: %w", err)
+		}
+		var peerList bgpv1alpha1.BGPPeerList
+		if err := r.List(ctx, &peerList, &client.ListOptions{LabelSelector: peerSel}); err != nil {
+			return ctrl.Result{}, fmt.Errorf("list BGPPeers: %w", err)
+		}
+		matchedPeers = peerList.Items
+		if len(matchedPeers) == 0 {
+			noMatchingPeers = true
+		}
 	}
 
-	RecordRoutePolicyApplied(policy.Name, true)
-	log.Printf("bgp/routepolicy: reconciled %s", policy.Name)
+	if noMatchingPeers {
+		log.Printf("bgp/routepolicy: %s peerSelector matched no BGPPeer resources", pol.Name)
+	}
+
+	// Collect all BGPRoutePolicies for this instance and sort by priority (desc), then name (asc).
+	var allPolicies bgpv1alpha1.BGPRoutePolicyList
+	if err := r.List(ctx, &allPolicies); err != nil {
+		return ctrl.Result{}, fmt.Errorf("list all BGPRoutePolicies: %w", err)
+	}
+	orderedPolicies := policiesForInstance(allPolicies.Items, pol.Spec.InstanceRef)
+	sortPolicies(orderedPolicies)
+
+	// Find this policy's position in the ordered list to derive its effective policy name.
+	for i := range providerList.Items {
+		bp := &providerList.Items[i]
+		if err := r.reconcileForProvider(ctx, &pol, bp, orderedPolicies, matchedPeers); err != nil {
+			log.Printf("bgp/routepolicy: %s provider %s: %v", pol.Name, bp.Name, err)
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
-// handleDelete removes all policy assignments, the policy, and its defined sets from GoBGP.
-func (r *RoutePolicyReconciler) handleDelete(ctx context.Context, c gobgpapi.GobgpApiClient, policy *bgpv1alpha1.BGPRoutePolicy) error {
-	if !controllerutil.ContainsFinalizer(policy, RoutePolicyFinalizer) {
-		return nil
+// reconcileForProvider applies a route policy to one provider.
+func (r *RoutePolicyReconciler) reconcileForProvider(
+	ctx context.Context,
+	pol *bgpv1alpha1.BGPRoutePolicy,
+	bp *providersv1alpha1.BGPProvider,
+	_ []bgpv1alpha1.BGPRoutePolicy,
+	matchedPeers []bgpv1alpha1.BGPPeer,
+) error {
+	impl, ok := r.Registry.Get(bp.Name)
+	if !ok {
+		return r.writePolicyProviderStatus(ctx, pol, bp.Name, bp.Spec.Type, false,
+			"DaemonUnavailable", "provider not in registry — daemon may be starting")
 	}
 
-	policyName := gobgpPolicyName(policy.Name)
-
-	// Step 1: Delete all policy assignments for this policy.
-	r.deleteAllAssignments(ctx, c, policy)
-
-	// Step 2: Delete the policy.
-	if _, err := c.DeletePolicy(ctx, &gobgpapi.DeletePolicyRequest{
-		Policy:             &gobgpapi.Policy{Name: policyName},
-		PreserveStatements: false,
-		All:                false,
-	}); err != nil && !isGoBGPNotFound(err) {
-		log.Printf("bgp/routepolicy: delete policy %s: %v", policyName, err)
+	// Build peer addresses for the policy spec.
+	var peerAddresses []string
+	for _, p := range matchedPeers {
+		peerAddresses = append(peerAddresses, p.Spec.Address)
 	}
 
-	// Step 3: Delete each defined set.
-	for i, stmt := range policy.Spec.Statements {
-		if len(stmt.PrefixSet) == 0 {
-			continue
-		}
-		setName := gobgpDefinedSetName(policy.Name, i)
-		if _, err := c.DeleteDefinedSet(ctx, &gobgpapi.DeleteDefinedSetRequest{
-			DefinedSet: &gobgpapi.DefinedSet{
-				DefinedType: gobgpapi.DefinedType_PREFIX,
-				Name:        setName,
+	// Build PolicySpec from the BGPRoutePolicy.
+	policySpec := buildPolicySpec(pol, peerAddresses)
+
+	if err := impl.AddOrUpdatePolicy(ctx, policySpec); err != nil {
+		return r.writePolicyProviderStatus(ctx, pol, bp.Name, bp.Spec.Type, false,
+			"PolicyApplicationFailed", fmt.Sprintf("AddOrUpdatePolicy: %v", err))
+	}
+
+	RecordRoutePolicyApplied(pol.Name, true)
+	return r.writePolicyProviderStatus(ctx, pol, bp.Name, bp.Spec.Type, true,
+		"Applied", fmt.Sprintf("policy %s applied", pol.Name))
+}
+
+// buildPolicySpec converts BGPRoutePolicy to provider.PolicySpec.
+func buildPolicySpec(pol *bgpv1alpha1.BGPRoutePolicy, peerAddresses []string) provider.PolicySpec {
+	importStmts := convertPolicyStatements(pol.Spec.ImportStatements)
+	exportStmts := convertPolicyStatements(pol.Spec.ExportStatements)
+
+	return provider.PolicySpec{
+		Name:             pol.Name,
+		Priority:         pol.Spec.Priority,
+		ImportStatements: importStmts,
+		ExportStatements: exportStmts,
+	}
+}
+
+// convertPolicyStatements converts API policy statements to provider policy statements.
+func convertPolicyStatements(stmts []bgpv1alpha1.PolicyStatement) []provider.PolicyStatement {
+	result := make([]provider.PolicyStatement, 0, len(stmts))
+	for _, s := range stmts {
+		ps := provider.PolicyStatement{
+			Name: s.Name,
+			Actions: provider.PolicyActions{
+				RouteDisposition: s.Actions.RouteDisposition,
+				SetNextHop:       s.Actions.SetNextHop,
 			},
-			All: false,
-		}); err != nil && !isGoBGPNotFound(err) {
-			log.Printf("bgp/routepolicy: delete defined set %s: %v", setName, err)
 		}
+		if s.Actions.SetLocalPreference != nil {
+			v := *s.Actions.SetLocalPreference
+			ps.Actions.SetLocalPreference = &v
+		}
+		if s.Actions.SetMED != nil {
+			v := *s.Actions.SetMED
+			ps.Actions.SetMED = &v
+		}
+		if s.Actions.SetCommunity != nil {
+			ps.Actions.SetCommunity = &provider.SetCommunityAction{
+				Communities: s.Actions.SetCommunity.Communities,
+				Method:      s.Actions.SetCommunity.Method,
+			}
+		}
+		if s.Conditions != nil {
+			ps.Conditions = &provider.PolicyConditions{
+				PrefixSets:   s.Conditions.PrefixSets,
+				CommunitySet: s.Conditions.CommunitySet,
+				NextHopSet:   s.Conditions.NextHopSet,
+			}
+		}
+		result = append(result, ps)
 	}
-
-	RecordRoutePolicyApplied(policy.Name, false)
-
-	patch := client.MergeFrom(policy.DeepCopy())
-	controllerutil.RemoveFinalizer(policy, RoutePolicyFinalizer)
-	return r.Patch(ctx, policy, patch)
+	return result
 }
 
-// upsertDefinedSets creates or replaces the GoBGP PrefixSets for each statement.
-func (r *RoutePolicyReconciler) upsertDefinedSets(ctx context.Context, c gobgpapi.GobgpApiClient, policy *bgpv1alpha1.BGPRoutePolicy) error {
-	for i, stmt := range policy.Spec.Statements {
-		if len(stmt.PrefixSet) == 0 {
-			continue
-		}
-
-		setName := gobgpDefinedSetName(policy.Name, i)
-		prefixes := make([]*gobgpapi.Prefix, 0, len(stmt.PrefixSet))
-		for _, pm := range stmt.PrefixSet {
-			gp := &gobgpapi.Prefix{IpPrefix: pm.CIDR}
-			if pm.MaskLengthMin != nil {
-				gp.MaskLengthMin = *pm.MaskLengthMin
-			}
-			if pm.MaskLengthMax != nil {
-				gp.MaskLengthMax = *pm.MaskLengthMax
-			}
-			prefixes = append(prefixes, gp)
-		}
-
-		ds := &gobgpapi.DefinedSet{
-			DefinedType: gobgpapi.DefinedType_PREFIX,
-			Name:        setName,
-			Prefixes:    prefixes,
-		}
-
-		// Try AddDefinedSet; if already exists, replace it.
-		if _, err := c.AddDefinedSet(ctx, &gobgpapi.AddDefinedSetRequest{
-			DefinedSet: ds,
-			Replace:    true,
-		}); err != nil {
-			return fmt.Errorf("add/replace defined set %s: %w", setName, err)
+// policiesForInstance filters policies by instanceRef.
+func policiesForInstance(all []bgpv1alpha1.BGPRoutePolicy, instanceRef string) []bgpv1alpha1.BGPRoutePolicy {
+	var result []bgpv1alpha1.BGPRoutePolicy
+	for _, p := range all {
+		if p.Spec.InstanceRef == instanceRef {
+			result = append(result, p)
 		}
 	}
-	return nil
+	return result
 }
 
-// upsertPolicy creates or replaces the GoBGP Policy.
-// Per D2: an implicit Accept statement is always appended as the last statement.
-func (r *RoutePolicyReconciler) upsertPolicy(ctx context.Context, c gobgpapi.GobgpApiClient, policy *bgpv1alpha1.BGPRoutePolicy) error {
-	policyName := gobgpPolicyName(policy.Name)
-
-	// +1 for the implicit final Accept statement (Decision D2).
-	statements := make([]*gobgpapi.Statement, 0, len(policy.Spec.Statements)+1)
-	for i, stmt := range policy.Spec.Statements {
-		gStmt := &gobgpapi.Statement{}
-
-		// Add prefix set condition if present.
-		if len(stmt.PrefixSet) > 0 {
-			setName := gobgpDefinedSetName(policy.Name, i)
-			gStmt.Conditions = &gobgpapi.Conditions{
-				PrefixSet: &gobgpapi.MatchSet{
-					Name: setName,
-					Type: gobgpapi.MatchSet_ANY,
-				},
-			}
+// sortPolicies sorts by priority descending, then by name ascending.
+func sortPolicies(policies []bgpv1alpha1.BGPRoutePolicy) {
+	sort.Slice(policies, func(i, j int) bool {
+		if policies[i].Spec.Priority != policies[j].Spec.Priority {
+			return policies[i].Spec.Priority > policies[j].Spec.Priority
 		}
-
-		// Set action.
-		gStmt.Actions = &gobgpapi.Actions{}
-		switch stmt.Action {
-		case "Reject":
-			gStmt.Actions.RouteAction = gobgpapi.RouteAction_REJECT
-		default: // "Accept"
-			gStmt.Actions.RouteAction = gobgpapi.RouteAction_ACCEPT
-		}
-
-		statements = append(statements, gStmt)
-	}
-
-	// D2: append implicit final Accept statement.
-	statements = append(statements, &gobgpapi.Statement{
-		Actions: &gobgpapi.Actions{
-			RouteAction: gobgpapi.RouteAction_ACCEPT,
-		},
+		return policies[i].Name < policies[j].Name
 	})
-
-	gobgpPolicy := &gobgpapi.Policy{
-		Name:       policyName,
-		Statements: statements,
-	}
-
-	// Delete the existing policy first (if any) to allow clean replacement.
-	if _, err := c.AddPolicy(ctx, &gobgpapi.AddPolicyRequest{
-		Policy:                  gobgpPolicy,
-		ReferExistingStatements: false,
-	}); err != nil {
-		// On already-exists: delete and re-add.
-		if isGoBGPAlreadyExists(err) {
-			if _, delErr := c.DeletePolicy(ctx, &gobgpapi.DeletePolicyRequest{
-				Policy:             &gobgpapi.Policy{Name: policyName},
-				PreserveStatements: false,
-				All:                false,
-			}); delErr != nil && !isGoBGPNotFound(delErr) {
-				return fmt.Errorf("delete policy %s for re-add: %w", policyName, delErr)
-			}
-			if _, addErr := c.AddPolicy(ctx, &gobgpapi.AddPolicyRequest{
-				Policy:                  gobgpPolicy,
-				ReferExistingStatements: false,
-			}); addErr != nil {
-				return fmt.Errorf("re-add policy %s: %w", policyName, addErr)
-			}
-			return nil
-		}
-		return fmt.Errorf("add policy %s: %w", policyName, err)
-	}
-	return nil
 }
 
-// resolvePeerAddresses returns the remote endpoint addresses for sessions matching
-// the policy's peerSelector. Returns nil when peerSelector is nil (global assignment).
-// It lists all BGPEndpoints once and builds a name→address map to avoid N individual
-// Get calls — one List instead of one Get per matched session.
-func (r *RoutePolicyReconciler) resolvePeerAddresses(ctx context.Context, policy *bgpv1alpha1.BGPRoutePolicy) ([]string, error) {
-	if policy.Spec.PeerSelector == nil {
-		return nil, nil
+// writePolicyProviderStatus writes per-provider status for a BGPRoutePolicy.
+func (r *RoutePolicyReconciler) writePolicyProviderStatus(
+	ctx context.Context,
+	pol *bgpv1alpha1.BGPRoutePolicy,
+	providerName, daemonType string,
+	applied bool,
+	reason, msg string,
+) error {
+	condStatus := metav1.ConditionFalse
+	if applied {
+		condStatus = metav1.ConditionTrue
 	}
-
-	sel, err := metav1.LabelSelectorAsSelector(policy.Spec.PeerSelector)
-	if err != nil {
-		return nil, fmt.Errorf("invalid peerSelector: %w", err)
-	}
-
-	var sessionList bgpv1alpha1.BGPSessionList
-	if err := r.List(ctx, &sessionList); err != nil {
-		return nil, fmt.Errorf("list BGPSessions: %w", err)
-	}
-
-	// Collect the unique remote endpoint names referenced by matching sessions.
-	remoteEndpointNames := make(map[string]struct{})
-	for _, sess := range sessionList.Items {
-		if sel.Matches(labels.Set(sess.Labels)) {
-			remoteEndpointNames[sess.Spec.RemoteEndpoint] = struct{}{}
-		}
-	}
-	if len(remoteEndpointNames) == 0 {
-		return nil, nil
-	}
-
-	// List all BGPEndpoints once and build a name→address lookup map.
-	var endpointList bgpv1alpha1.BGPEndpointList
-	if err := r.List(ctx, &endpointList); err != nil {
-		return nil, fmt.Errorf("list BGPEndpoints: %w", err)
-	}
-	endpointAddrs := make(map[string]string, len(endpointList.Items))
-	for _, ep := range endpointList.Items {
-		endpointAddrs[ep.Name] = ep.Spec.Address
-	}
-
-	addresses := make([]string, 0, len(remoteEndpointNames))
-	for name := range remoteEndpointNames {
-		addr, ok := endpointAddrs[name]
-		if !ok {
-			log.Printf("bgp/routepolicy: remote endpoint %s not found in cache", name)
-			continue
-		}
-		addresses = append(addresses, addr)
-	}
-
-	return addresses, nil
-}
-
-// upsertPolicyAssignments reconciles the GoBGP PolicyAssignment set for this policy.
-// When peerAddresses is nil (global policy), a single global assignment is created.
-// When peerAddresses is non-nil (scoped policy), per-peer assignments are created.
-func (r *RoutePolicyReconciler) upsertPolicyAssignments(ctx context.Context, c gobgpapi.GobgpApiClient, policy *bgpv1alpha1.BGPRoutePolicy, peerAddresses []string) error {
-	policyName := gobgpPolicyName(policy.Name)
-	direction := policyDirection(policy.Spec.Type)
-
-	if peerAddresses == nil {
-		// Global assignment.
-		return r.addPolicyAssignment(ctx, c, policyName, direction, "")
-	}
-
-	// Per-peer assignments.
-	for _, addr := range peerAddresses {
-		if err := r.addPolicyAssignment(ctx, c, policyName, direction, addr); err != nil {
-			log.Printf("bgp/routepolicy: assign policy %s to peer %s: %v", policyName, addr, err)
-		}
-	}
-	return nil
-}
-
-// addPolicyAssignment calls GoBGP AddPolicyAssignment for either a global (peerAddr="")
-// or per-peer assignment.
-func (r *RoutePolicyReconciler) addPolicyAssignment(ctx context.Context, c gobgpapi.GobgpApiClient, policyName string, direction gobgpapi.PolicyDirection, peerAddr string) error {
-	assignment := &gobgpapi.PolicyAssignment{
-		Direction:     direction,
-		DefaultAction: gobgpapi.RouteAction_ACCEPT,
-		Policies:      []*gobgpapi.Policy{{Name: policyName}},
-	}
-	if peerAddr != "" {
-		assignment.Name = peerAddr
-	}
-
-	if _, err := c.AddPolicyAssignment(ctx, &gobgpapi.AddPolicyAssignmentRequest{
-		Assignment: assignment,
-	}); err != nil && !isGoBGPAlreadyExists(err) {
-		return fmt.Errorf("add policy assignment (peer=%q): %w", peerAddr, err)
-	}
-	return nil
-}
-
-// deleteAllAssignments removes all GoBGP PolicyAssignments for this policy.
-// It lists existing assignments and deletes those referencing our policy name.
-func (r *RoutePolicyReconciler) deleteAllAssignments(ctx context.Context, c gobgpapi.GobgpApiClient, policy *bgpv1alpha1.BGPRoutePolicy) {
-	policyName := gobgpPolicyName(policy.Name)
-	direction := policyDirection(policy.Spec.Type)
-
-	// List all assignments in this direction via the streaming RPC.
-	var assignments []*gobgpapi.PolicyAssignment
-	stream, err := c.ListPolicyAssignment(ctx, &gobgpapi.ListPolicyAssignmentRequest{
-		Direction: direction,
-	})
-	if err != nil {
-		log.Printf("bgp/routepolicy: list policy assignments for %s: %v", policyName, err)
-	} else {
-		for {
-			resp, err := stream.Recv()
-			if err != nil {
-				break
-			}
-			if resp.Assignment == nil {
-				continue
-			}
-			for _, p := range resp.Assignment.Policies {
-				if p.Name == policyName {
-					assignments = append(assignments, resp.Assignment)
-					break
-				}
-			}
-		}
-	}
-
-	for _, a := range assignments {
-		if _, err := c.DeletePolicyAssignment(ctx, &gobgpapi.DeletePolicyAssignmentRequest{
-			Assignment: a,
-			All:        false,
-		}); err != nil && !isGoBGPNotFound(err) {
-			log.Printf("bgp/routepolicy: delete assignment for %s: %v", policyName, err)
-		}
-	}
-}
-
-// setAppliedFalse sets the Applied condition to False and requeues.
-func (r *RoutePolicyReconciler) setAppliedFalse(ctx context.Context, policy *bgpv1alpha1.BGPRoutePolicy, msg string) (reconcile.Result, error) {
-	patch := client.MergeFrom(policy.DeepCopy())
-	apimeta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
-		Type:               BGPRoutePolicyApplied,
-		Status:             metav1.ConditionFalse,
-		Reason:             "Error",
+	cond := metav1.Condition{
+		Type:               "Applied",
+		Status:             condStatus,
+		Reason:             reason,
 		Message:            msg,
-		ObservedGeneration: policy.Generation,
-	})
-	if err := r.Status().Patch(ctx, policy, patch); err != nil {
-		log.Printf("bgp/routepolicy: patch status: %v", err)
+		ObservedGeneration: pol.Generation,
 	}
-	RecordRoutePolicyApplied(policy.Name, false)
-	return ctrl.Result{}, fmt.Errorf("%s", msg)
+
+	updated := pol.DeepCopy()
+	found := false
+	for i, ps := range updated.Status.Providers {
+		if ps.ProviderName == providerName {
+			apimeta.SetStatusCondition(&updated.Status.Providers[i].Conditions, cond)
+			found = true
+			break
+		}
+	}
+	if !found {
+		updated.Status.Providers = append(updated.Status.Providers, bgpv1alpha1.ProviderStatus{
+			ProviderName: providerName,
+			Daemon:       daemonType,
+			Conditions:   []metav1.Condition{cond},
+		})
+	}
+
+	fieldManager := fmt.Sprintf("cosmos-controller/%s", providerName)
+	patch := client.MergeFrom(pol)
+	if err := r.Status().Patch(ctx, updated, patch, client.ForceOwnership, client.FieldOwner(fieldManager)); err != nil {
+		log.Printf("bgp/routepolicy: patch status for provider %s: %v", providerName, err)
+	}
+
+	if !applied {
+		return fmt.Errorf("%s: %s", reason, msg)
+	}
+	return nil
 }
 
-// mapSessionToPolicies returns reconcile requests for BGPRoutePolicies with
-// a non-nil peerSelector when a BGPSession changes.
-func (r *RoutePolicyReconciler) mapSessionToPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
-	var policyList bgpv1alpha1.BGPRoutePolicyList
-	if err := r.List(ctx, &policyList); err != nil {
-		log.Printf("bgp/routepolicy: list BGPRoutePolicies for session change: %v", err)
+// handleDelete removes policies from all providers and removes the finalizer.
+func (r *RoutePolicyReconciler) handleDelete(ctx context.Context, pol *bgpv1alpha1.BGPRoutePolicy) error {
+	if !controllerutil.ContainsFinalizer(pol, Finalizer) {
 		return nil
 	}
 
-	var requests []reconcile.Request
-	for _, p := range policyList.Items {
-		if p.Spec.PeerSelector != nil {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: p.Name},
-			})
+	blocked := false
+	for _, ps := range pol.Status.Providers {
+		impl, ok := r.Registry.Get(ps.ProviderName)
+		if !ok {
+			continue
+		}
+		if err := impl.DeletePolicy(ctx, pol.Name); err != nil {
+			log.Printf("bgp/routepolicy: delete policy %s on provider %s: %v", pol.Name, ps.ProviderName, err)
+			blocked = true
 		}
 	}
-	return requests
+
+	if blocked {
+		return fmt.Errorf("deletion blocked: daemon unavailable for one or more providers")
+	}
+
+	RecordRoutePolicyApplied(pol.Name, false)
+
+	patch := client.MergeFrom(pol.DeepCopy())
+	controllerutil.RemoveFinalizer(pol, Finalizer)
+	return r.Patch(ctx, pol, patch)
 }
 
-// SetupWithManager registers the RoutePolicyReconciler with the controller-runtime manager.
+// SetupWithManager registers RoutePolicyReconciler with controller-runtime.
 func (r *RoutePolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bgpv1alpha1.BGPRoutePolicy{}).
-		Watches(
-			&bgpv1alpha1.BGPSession{},
-			handler.EnqueueRequestsFromMapFunc(r.mapSessionToPolicies),
-		).
-		WithOptions(controller.Options{
-			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](1*time.Second, 30*time.Second),
-		}).
 		Complete(r)
-}
-
-// gobgpPolicyName returns the deterministic GoBGP policy name for a BGPRoutePolicy.
-func gobgpPolicyName(policyName string) string {
-	return "bgprp-" + policyName
-}
-
-// gobgpDefinedSetName returns the deterministic GoBGP DefinedSet name for a statement.
-func gobgpDefinedSetName(policyName string, statementIndex int) string {
-	return fmt.Sprintf("bgprp-%s-stmt%d", policyName, statementIndex)
-}
-
-// policyDirection maps the BGPRoutePolicy type string to a GoBGP PolicyDirection.
-func policyDirection(policyType string) gobgpapi.PolicyDirection {
-	switch policyType {
-	case "Import":
-		return gobgpapi.PolicyDirection_IMPORT
-	default: // "Export"
-		return gobgpapi.PolicyDirection_EXPORT
-	}
-}
-
-// isGoBGPNotFound returns true for GoBGP "not found" errors.
-func isGoBGPNotFound(err error) bool {
-	return status.Code(err) == codes.NotFound
-}
-
-// isGoBGPAlreadyExists returns true for GoBGP "already exists" errors.
-func isGoBGPAlreadyExists(err error) bool {
-	return status.Code(err) == codes.AlreadyExists
 }
