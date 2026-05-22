@@ -46,7 +46,6 @@ spec:
           image: ghcr.io/milo-os/bgp:latest
           imagePullPolicy: IfNotPresent
           args:
-            - --gobgp-addr=127.0.0.1:50051
             - --metrics-addr=:8086
             - --health-addr=:8087
           env:

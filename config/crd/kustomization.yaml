@@ -7,3 +7,5 @@ resources:
   - bgp.miloapis.com_bgppeeringpolicies.yaml
   - bgp.miloapis.com_bgpadvertisements.yaml
   - bgp.miloapis.com_bgproutepolicies.yaml
+  - vpc.miloapis.com_vpcs.yaml
+  - vpc.miloapis.com_vpcattachments.yaml

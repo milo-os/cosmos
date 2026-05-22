@@ -13,7 +13,7 @@ images:
     newName: gobgpd
     newTag: e2e-local
 
-# Patch to set LOCAL_ENDPOINT to "node-$(NODE_NAME)" so each DaemonSet pod
+# Patch to set LOCAL_ENDPOINT to "$(NODE_NAME)" so each DaemonSet pod
 # registers its endpoint under the correct node-scoped name.
 # Uses JSON patch to modify only the specific env var without replacing the list.
 patches:
