@@ -4,10 +4,13 @@ metadata:
   name: session-lifecycle
 spec:
   description: >
-    Verify the lifecycle of a manually-created BGPSession: the session reaches
-    Established state and GoBGP removes the peer when the session is deleted.
+    Verify the lifecycle of BGPSessions: sessions reach Established state and
+    GoBGP removes peers when sessions are deleted. Uses worker2 as the observed
+    node — its session targets worker3, and deletion is verified by watching the
+    generated BGPPeer disappear (the session finalizer cleans up GoBGP before
+    removing the BGPPeer resource).
   steps:
-    - name: create-endpoints-and-manual-session
+    - name: create-sessions
       try:
         - script:
             content: |
@@ -20,80 +23,101 @@ spec:
               W2=$(get_ipv6 bgp-e2e-worker2)
               W3=$(get_ipv6 bgp-e2e-worker3)
 
-              # Endpoint names must exactly match the kind worker node names so that the
-              # session reconciler (LOCAL_ENDPOINT=$(NODE_NAME)) processes this session.
               kubectl apply -f - <<EOF
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
+              kind: BGPSession
               metadata:
-                name: bgp-e2e-worker2
+                name: e2e-lifecycle-w2
                 labels:
                   e2e-test: session-lifecycle
               spec:
-                address: "${W2}"
-                asNumber: 65000
+                fromProviderSelector:
+                  matchLabels:
+                    bgp.miloapis.com/node: bgp-e2e-worker2
+                    bgp.miloapis.com/daemon: GoBGP
+                fromInstanceRef: default
+                toPeers:
+                  - address: "${W3}"
+                    asNumber: 65000
+                    instanceRef: default
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast
-              ---
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
-              metadata:
-                name: bgp-e2e-worker3
-                labels:
-                  e2e-test: session-lifecycle
-              spec:
-                address: "${W3}"
-                asNumber: 65000
-                addressFamilies:
-                  - afi: IPv6
-                    safi: Unicast
+                timers:
+                  holdTime: 30
+                  keepalive: 10
               ---
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPSession
               metadata:
-                name: e2e-manual-session-w2-w3
+                name: e2e-lifecycle-w3
+                labels:
+                  e2e-test: session-lifecycle
               spec:
-                localEndpoint: bgp-e2e-worker2
-                remoteEndpoint: bgp-e2e-worker3
-                holdTime: 30
-                keepaliveTime: 10
+                fromProviderSelector:
+                  matchLabels:
+                    bgp.miloapis.com/node: bgp-e2e-worker3
+                    bgp.miloapis.com/daemon: GoBGP
+                fromInstanceRef: default
+                toPeers:
+                  - address: "${W2}"
+                    asNumber: 65000
+                    instanceRef: default
+                addressFamilies:
+                  - afi: IPv6
+                    safi: Unicast
+                timers:
+                  holdTime: 30
+                  keepalive: 10
               EOF
 
-    - name: assert-session-configured
+    - name: assert-session-reconciled
       try:
-        # The Configured condition must be True before the session can reach Established.
+        # PeersReconciled=True means the SessionReconciler generated the BGPPeer.
         - assert:
             resource:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPSession
               metadata:
-                name: e2e-manual-session-w2-w3
+                name: e2e-lifecycle-w2
               status:
-                (conditions[?type=='Configured'].status | [0]): "True"
+                (conditions[?type=='PeersReconciled'].status | [0]): "True"
 
     - name: assert-session-established
       try:
-        - assert:
-            resource:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
-              metadata:
-                name: e2e-manual-session-w2-w3
-              status:
-                (conditions[?type=='SessionEstablished'].status | [0]): "True"
+        - script:
+            content: |
+              set -e
+              POD=$(kubectl -n bgp-system get pod \
+                -l app.kubernetes.io/name=bgp \
+                --field-selector spec.nodeName=bgp-e2e-worker2 \
+                -o jsonpath='{.items[0].metadata.name}')
+              echo "Waiting for GoBGP session in pod: $POD"
+
+              ATTEMPTS=0
+              ESTABLISHED=0
+              while [ "$ESTABLISHED" -lt 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
+                ESTABLISHED=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                  gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
+                ATTEMPTS=$((ATTEMPTS+1))
+                [ "$ESTABLISHED" -lt 1 ] && sleep 5
+              done
+              if [ "$ESTABLISHED" -lt 1 ]; then
+                echo "ERROR: no BGP session reached Established on bgp-e2e-worker2"
+                kubectl -n bgp-system exec "$POD" -c gobgpd -- gobgp neighbor || true
+                exit 1
+              fi
+              echo "OK: BGP session Established"
 
     - name: verify-gobgp-peer-present
       try:
         - script:
             content: |
               set -e
-              # Get the IPv6 address of worker3 (the remote endpoint from worker2's perspective)
+              # Get the IPv6 address of worker3 (the peer from worker2's perspective)
               W3=$(kubectl get node bgp-e2e-worker3 \
                 -o jsonpath='{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
                 | grep ':' | head -1)
-              # The session is localEndpoint=bgp-e2e-worker2, remoteEndpoint=bgp-e2e-worker3.
-              # Only the pod on bgp-e2e-worker2 has W3 as a GoBGP peer. Select that pod explicitly.
               POD=$(kubectl -n bgp-system get pod \
                 -l app.kubernetes.io/name=bgp \
                 --field-selector spec.nodeName=bgp-e2e-worker2 \
@@ -109,38 +133,32 @@ spec:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPSession
-              name: e2e-manual-session-w2-w3
-        # Wait for the BGPSession resource to be fully removed from the API
-        # (i.e. the finalizer has run and the peer was cleaned up in GoBGP).
-        # This is more reliable than polling GoBGP directly because:
-        # - The finalizer ensures DeletePeer is called before the resource is removed.
-        # - "resource gone" is an unambiguous signal that cleanup completed.
+              name: e2e-lifecycle-w2
+        # Wait for the generated BGPPeer to disappear. The session finalizer
+        # deletes all BGPPeers (triggering PeerReconciler GoBGP cleanup) before
+        # removing the finalizer, so "peer gone" means GoBGP cleanup completed.
         - script:
             content: |
               set -e
               ATTEMPTS=0
-              FOUND=1
-              while [ "$FOUND" -eq 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
-                kubectl get bgpsession e2e-manual-session-w2-w3 2>/dev/null \
-                  && FOUND=1 || FOUND=0
+              COUNT=1
+              while [ "$COUNT" -gt 0 ] && [ "$ATTEMPTS" -lt 60 ]; do
+                COUNT=$(kubectl get bgppeers \
+                  -l bgp.miloapis.com/session-name=e2e-lifecycle-w2 \
+                  --no-headers 2>/dev/null | grep -c . || echo 0)
                 ATTEMPTS=$((ATTEMPTS+1))
-                [ "$FOUND" -eq 1 ] && sleep 5
+                [ "$COUNT" -gt 0 ] && sleep 5
               done
-              if [ "$FOUND" -eq 1 ]; then
-                echo "ERROR: BGPSession e2e-manual-session-w2-w3 still exists after ${ATTEMPTS} attempts"
-                kubectl get bgpsession e2e-manual-session-w2-w3 -o yaml
+              if [ "$COUNT" -gt 0 ]; then
+                echo "ERROR: BGPPeers for e2e-lifecycle-w2 still exist after ${ATTEMPTS} attempts"
+                kubectl get bgppeers -l bgp.miloapis.com/session-name=e2e-lifecycle-w2 -o yaml || true
                 exit 1
               fi
-              echo "OK: BGPSession deleted (finalizer completed — GoBGP peer was removed)"
+              echo "OK: BGPPeers deleted (finalizer completed — GoBGP peer was removed)"
 
       finally:
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
-              name: bgp-e2e-worker2
-        - delete:
-            ref:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
-              name: bgp-e2e-worker3
+              kind: BGPSession
+              name: e2e-lifecycle-w3

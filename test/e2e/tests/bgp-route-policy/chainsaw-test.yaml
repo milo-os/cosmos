@@ -5,10 +5,10 @@ metadata:
 spec:
   description: >
     Verify that BGPRoutePolicy resources are accepted by the API server with valid
-    conditions, and that the operator reconciles them without error. Requires
-    endpoints and a peering session to be established for the policy to have effect.
+    conditions and that the operator reconciles them without error. Requires
+    a peering session to be established for the policy to have effect.
   steps:
-    - name: setup-endpoints-and-peering
+    - name: setup-sessions
       try:
         - script:
             content: |
@@ -21,47 +21,52 @@ spec:
               W1=$(get_ipv6 bgp-e2e-worker)
               W2=$(get_ipv6 bgp-e2e-worker2)
 
-              # Endpoint names must exactly match the kind worker node names so that the
-              # session reconciler (LOCAL_ENDPOINT=$(NODE_NAME)) processes these sessions.
               kubectl apply -f - <<EOF
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
+              kind: BGPSession
               metadata:
-                name: bgp-e2e-worker
+                name: e2e-rp-w1
                 labels:
                   e2e-test: bgp-route-policy
               spec:
-                address: "${W1}"
-                asNumber: 65000
-                addressFamilies:
-                  - afi: IPv6
-                    safi: Unicast
-              ---
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
-              metadata:
-                name: bgp-e2e-worker2
-                labels:
-                  e2e-test: bgp-route-policy
-              spec:
-                address: "${W2}"
-                asNumber: 65000
-                addressFamilies:
-                  - afi: IPv6
-                    safi: Unicast
-              ---
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPPeeringPolicy
-              metadata:
-                name: e2e-rp-mesh
-              spec:
-                selector:
+                fromProviderSelector:
                   matchLabels:
-                    e2e-test: bgp-route-policy
-                mode: mesh
-                sessionTemplate:
+                    bgp.miloapis.com/node: bgp-e2e-worker
+                    bgp.miloapis.com/daemon: GoBGP
+                fromInstanceRef: default
+                toPeers:
+                  - address: "${W2}"
+                    asNumber: 65000
+                    instanceRef: default
+                addressFamilies:
+                  - afi: IPv6
+                    safi: Unicast
+                timers:
                   holdTime: 30
-                  keepaliveTime: 10
+                  keepalive: 10
+              ---
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPSession
+              metadata:
+                name: e2e-rp-w2
+                labels:
+                  e2e-test: bgp-route-policy
+              spec:
+                fromProviderSelector:
+                  matchLabels:
+                    bgp.miloapis.com/node: bgp-e2e-worker2
+                    bgp.miloapis.com/daemon: GoBGP
+                fromInstanceRef: default
+                toPeers:
+                  - address: "${W1}"
+                    asNumber: 65000
+                    instanceRef: default
+                addressFamilies:
+                  - afi: IPv6
+                    safi: Unicast
+                timers:
+                  holdTime: 30
+                  keepalive: 10
               EOF
 
     - name: wait-for-session-established
@@ -69,19 +74,23 @@ spec:
         - script:
             content: |
               set -e
+              POD=$(kubectl -n bgp-system get pod \
+                -l app.kubernetes.io/name=bgp \
+                --field-selector spec.nodeName=bgp-e2e-worker \
+                -o jsonpath='{.items[0].metadata.name}')
+              echo "Waiting for GoBGP session in pod: $POD"
+
               ATTEMPTS=0
-              while [ "$ATTEMPTS" -lt 60 ]; do
-                STATE=$(kubectl get bgpsessions \
-                  -l bgp.miloapis.com/policy=e2e-rp-mesh \
-                  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="SessionEstablished")].status}{"\n"}{end}' \
-                  | grep -c "^True$" || true)
-                [ "$STATE" -ge 1 ] && break
+              ESTABLISHED=0
+              while [ "$ESTABLISHED" -lt 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
+                ESTABLISHED=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                  gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
                 ATTEMPTS=$((ATTEMPTS+1))
-                sleep 5
+                [ "$ESTABLISHED" -lt 1 ] && sleep 5
               done
-              if [ "$STATE" -lt 1 ]; then
+              if [ "$ESTABLISHED" -lt 1 ]; then
                 echo "ERROR: no BGP sessions reached Established"
-                kubectl get bgpsessions -o wide
+                kubectl -n bgp-system exec "$POD" -c gobgpd -- gobgp neighbor || true
                 exit 1
               fi
               echo "OK: BGP session Established"
@@ -95,14 +104,17 @@ spec:
               metadata:
                 name: e2e-export-filter
               spec:
-                type: Export
-                statements:
-                  - prefixSet:
-                      - cidr: "2001:db8::/32"
-                        maskLengthMin: 32
-                        maskLengthMax: 48
-                    action: Accept
-                  - action: Reject
+                instanceRef: default
+                exportStatements:
+                  - name: accept-2001-db8
+                    conditions:
+                      prefixSets:
+                        - 2001-db8
+                    actions:
+                      routeDisposition: Accept
+                  - name: reject-all
+                    actions:
+                      routeDisposition: Reject
 
     - name: assert-route-policy-applied
       try:
@@ -140,15 +152,10 @@ spec:
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPPeeringPolicy
-              name: e2e-rp-mesh
+              kind: BGPSession
+              name: e2e-rp-w1
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
-              name: bgp-e2e-worker
-        - delete:
-            ref:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPEndpoint
-              name: bgp-e2e-worker2
+              kind: BGPSession
+              name: e2e-rp-w2
