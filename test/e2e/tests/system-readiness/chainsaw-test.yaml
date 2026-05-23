@@ -40,31 +40,7 @@ spec:
               apiVersion: apiextensions.k8s.io/v1
               kind: CustomResourceDefinition
               metadata:
-                name: bgpconfigurations.bgp.miloapis.com
-              status:
-                (conditions[?type=='Established'].status | [0]): "True"
-        - assert:
-            resource:
-              apiVersion: apiextensions.k8s.io/v1
-              kind: CustomResourceDefinition
-              metadata:
-                name: bgpsessions.bgp.miloapis.com
-              status:
-                (conditions[?type=='Established'].status | [0]): "True"
-        - assert:
-            resource:
-              apiVersion: apiextensions.k8s.io/v1
-              kind: CustomResourceDefinition
-              metadata:
-                name: bgpendpoints.bgp.miloapis.com
-              status:
-                (conditions[?type=='Established'].status | [0]): "True"
-        - assert:
-            resource:
-              apiVersion: apiextensions.k8s.io/v1
-              kind: CustomResourceDefinition
-              metadata:
-                name: bgppeeringpolicies.bgp.miloapis.com
+                name: bgpinstances.bgp.miloapis.com
               status:
                 (conditions[?type=='Established'].status | [0]): "True"
         - assert:
@@ -80,7 +56,39 @@ spec:
               apiVersion: apiextensions.k8s.io/v1
               kind: CustomResourceDefinition
               metadata:
+                name: bgpsessions.bgp.miloapis.com
+              status:
+                (conditions[?type=='Established'].status | [0]): "True"
+        - assert:
+            resource:
+              apiVersion: apiextensions.k8s.io/v1
+              kind: CustomResourceDefinition
+              metadata:
                 name: bgproutepolicies.bgp.miloapis.com
+              status:
+                (conditions[?type=='Established'].status | [0]): "True"
+        - assert:
+            resource:
+              apiVersion: apiextensions.k8s.io/v1
+              kind: CustomResourceDefinition
+              metadata:
+                name: bgpexternalpeers.bgp.miloapis.com
+              status:
+                (conditions[?type=='Established'].status | [0]): "True"
+        - assert:
+            resource:
+              apiVersion: apiextensions.k8s.io/v1
+              kind: CustomResourceDefinition
+              metadata:
+                name: bgppeers.bgp.miloapis.com
+              status:
+                (conditions[?type=='Established'].status | [0]): "True"
+        - assert:
+            resource:
+              apiVersion: apiextensions.k8s.io/v1
+              kind: CustomResourceDefinition
+              metadata:
+                name: bgpproviders.providers.bgp.miloapis.com
               status:
                 (conditions[?type=='Established'].status | [0]): "True"
         - assert:
@@ -99,3 +107,26 @@ spec:
                 name: vpcattachments.vpc.miloapis.com
               status:
                 (conditions[?type=='Established'].status | [0]): "True"
+
+    - name: bgp-providers-bootstrapped
+      try:
+        # ProviderReconciler auto-bootstraps one BGPProvider per node at startup.
+        # Expect one GoBGP provider per worker node (3 workers in the e2e cluster).
+        - script:
+            content: |
+              set -e
+              ATTEMPTS=0
+              COUNT=0
+              while [ "$COUNT" -lt 3 ] && [ "$ATTEMPTS" -lt 30 ]; do
+                COUNT=$(kubectl get bgpproviders \
+                  -l bgp.miloapis.com/daemon=GoBGP \
+                  --no-headers 2>/dev/null | wc -l)
+                ATTEMPTS=$((ATTEMPTS+1))
+                [ "$COUNT" -lt 3 ] && sleep 2
+              done
+              if [ "$COUNT" -lt 3 ]; then
+                echo "ERROR: only $COUNT/3 GoBGP BGPProviders bootstrapped after ${ATTEMPTS} attempts"
+                kubectl get bgpproviders -o wide || true
+                exit 1
+              fi
+              echo "OK: $COUNT GoBGP BGPProviders bootstrapped"

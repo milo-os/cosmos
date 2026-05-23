@@ -25,9 +25,12 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	bgpcontroller "go.miloapis.com/bgp/internal/controller"
-	"go.miloapis.com/bgp/internal/routesync"
 )
 
 func main() {
@@ -38,11 +41,9 @@ func main() {
 }
 
 type options struct {
-	gobgpAddr     string
-	localEndpoint string
-	srv6Net       string
-	metricsAddr   string
-	healthAddr    string
+	metricsAddr string
+	healthAddr  string
+	clusterRole string
 }
 
 func newRootCommand() *cobra.Command {
@@ -50,41 +51,88 @@ func newRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "bgp",
-		Short: "BGP operator — reconciles BGP CRDs against a GoBGP sidecar",
-		Long: `The BGP operator runs as a DaemonSet alongside a GoBGP sidecar container.
-It reconciles BGPConfiguration, BGPSession, BGPPeeringPolicy, BGPAdvertisement,
-and BGPRoutePolicy CRDs into GoBGP gRPC calls, and programs netlink routes from
-BGP RIB events received from the sidecar.`,
+		Short: "BGP operator — reconciles BGP CRDs against local BGP daemons",
+		Long: `The BGP operator runs as a DaemonSet alongside FRR and/or GoBGP sidecar containers.
+It reads its cluster role from the cosmos-config ConfigMap in cosmos-system and
+reconciles BGPProvider, BGPInstance, BGPPeer, BGPAdvertisement, BGPRoutePolicy,
+BGPSession, and BGPExternalPeer CRDs.`,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd.Context(), opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.gobgpAddr, "gobgp-addr", "127.0.0.1:50051", "GoBGP gRPC address")
-	cmd.Flags().StringVar(&opts.localEndpoint, "local-endpoint", os.Getenv("LOCAL_ENDPOINT"), "Name of the local BGPEndpoint resource for this instance (defaults to LOCAL_ENDPOINT env var)")
-	cmd.Flags().StringVar(&opts.srv6Net, "srv6-net", os.Getenv("SRV6_NET"), "This node's SRv6 prefix to exclude from route programming (defaults to SRV6_NET env var)")
 	cmd.Flags().StringVar(&opts.metricsAddr, "metrics-addr", ":8082", "Address to serve Prometheus metrics on")
 	cmd.Flags().StringVar(&opts.healthAddr, "health-addr", ":8083", "Address to serve health/readiness probes on")
+	cmd.Flags().StringVar(&opts.clusterRole, "cluster-role", "", "Override cluster role (pop|infra|management); skips cosmos-config ConfigMap lookup when set")
 
 	return cmd
+}
+
+// validClusterRoles is the set of accepted clusterRole values in cosmos-config.
+var validClusterRoles = map[string]bool{
+	"pop":        true,
+	"infra":      true,
+	"management": true,
 }
 
 func run(ctx context.Context, opts *options) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if opts.localEndpoint == "" {
-		return fmt.Errorf("--local-endpoint or LOCAL_ENDPOINT env var is required")
+	// Read NODE_NAME from Downward API environment variable.
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName == "" {
+		log.Printf("bgp: NODE_NAME not set — provider auto-bootstrap disabled")
 	}
 
-	log.Printf("bgp: starting (endpoint=%s gobgp=%s srv6-net=%q)", opts.localEndpoint, opts.gobgpAddr, opts.srv6Net)
+	// Resolve clusterRole: use the flag value directly when set; otherwise read from
+	// the cosmos-config ConfigMap in cosmos-system (production default).
+	clusterRole := opts.clusterRole
+	if clusterRole == "" {
+		var err error
+		clusterRole, err = readClusterRole(ctx)
+		if err != nil {
+			return fmt.Errorf("read cluster role: %w", err)
+		}
+	} else if !validClusterRoles[clusterRole] {
+		return fmt.Errorf("invalid --cluster-role %q: must be one of pop, infra, management", clusterRole)
+	}
 
-	return bgpcontroller.Run(ctx, bgpcontroller.ControllerOptions{
-		LocalEndpoint: opts.localEndpoint,
-		SRv6Net:       opts.srv6Net,
-		GoBGPAddr:     opts.gobgpAddr,
-		MetricsAddr:   opts.metricsAddr,
-		HealthAddr:    opts.healthAddr,
-	}, routesync.RunRouteWatcher)
+	log.Printf("bgp: starting (clusterRole=%s node=%s)", clusterRole, nodeName)
+
+	return bgpcontroller.Run(ctx, opts.metricsAddr, opts.healthAddr, clusterRole, nodeName)
+}
+
+// readClusterRole reads the clusterRole field from the cosmos-config ConfigMap
+// in the cosmos-system namespace. Returns an error if the ConfigMap is missing,
+// the key is absent, or the value is not one of: pop, infra, management.
+func readClusterRole(ctx context.Context) (string, error) {
+	restCfg, err := ctrlconfig.GetConfig()
+	if err != nil {
+		return "", fmt.Errorf("get k8s config: %w", err)
+	}
+
+	c, err := client.New(restCfg, client.Options{Scheme: bgpcontroller.Scheme()})
+	if err != nil {
+		return "", fmt.Errorf("create k8s client: %w", err)
+	}
+
+	var cm corev1.ConfigMap
+	if err := c.Get(ctx, types.NamespacedName{
+		Namespace: "cosmos-system",
+		Name:      "cosmos-config",
+	}, &cm); err != nil {
+		return "", fmt.Errorf("get cosmos-config ConfigMap from cosmos-system: %w", err)
+	}
+
+	role, ok := cm.Data["clusterRole"]
+	if !ok {
+		return "", fmt.Errorf("cosmos-config ConfigMap is missing the 'clusterRole' key")
+	}
+	if !validClusterRoles[role] {
+		return "", fmt.Errorf("invalid clusterRole %q: must be one of pop, infra, management", role)
+	}
+
+	return role, nil
 }

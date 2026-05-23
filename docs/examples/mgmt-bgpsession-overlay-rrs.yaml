@@ -1,0 +1,37 @@
+# Written by management cluster cosmos. toPeers resolved from infra cluster BGPProvider resources.
+#
+# This BGPSession establishes the overlay VPNv4/VPNv6 peering between the GoBGP
+# instance on nodes in jp-east-1 and the two APAC route reflectors in the infra
+# cluster. POP nodes peer toward the RRs as clients; the RRs reflect VPN routes
+# between all clients without requiring a full mesh.
+#
+# The toPeers addresses are resolved from BGPProvider resources in the infra
+# cluster (rr-apac-1-frr and rr-apac-2-frr) at write time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPSession
+metadata:
+  name: tokyo-overlay-to-apac-rrs
+spec:
+  fromProviderSelector:
+    matchLabels:
+      bgp.datum.net/plane: overlay
+      bgp.datum.net/pop: jp-east-1
+      bgp.miloapis.com/daemon: gobgp
+  fromInstanceRef: overlay
+  toPeers:
+    - address: "2001:db8::rr-apac-1"  # resolved from BGPProvider/rr-apac-1-frr
+      asNumber: 65000
+      instanceRef: overlay
+      routeReflectorClient: false
+    - address: "2001:db8::rr-apac-2"  # resolved from BGPProvider/rr-apac-2-frr
+      asNumber: 65000
+      instanceRef: overlay
+      routeReflectorClient: false
+  addressFamilies:
+    - afi: IPv4
+      safi: VPNUnicast
+    - afi: IPv6
+      safi: VPNUnicast
+  timers:
+    holdTime: 90
+    keepalive: 30

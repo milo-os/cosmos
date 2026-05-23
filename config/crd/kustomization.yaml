@@ -1,11 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - bgp.miloapis.com_bgpconfigurations.yaml
-  - bgp.miloapis.com_bgpendpoints.yaml
-  - bgp.miloapis.com_bgpsessions.yaml
-  - bgp.miloapis.com_bgppeeringpolicies.yaml
+  - providers.bgp.miloapis.com_bgpproviders.yaml
+  - bgp.miloapis.com_bgpinstances.yaml
+  - bgp.miloapis.com_bgppeers.yaml
   - bgp.miloapis.com_bgpadvertisements.yaml
   - bgp.miloapis.com_bgproutepolicies.yaml
+  - bgp.miloapis.com_bgpsessions.yaml
+  - bgp.miloapis.com_bgpexternalpeers.yaml
   - vpc.miloapis.com_vpcs.yaml
   - vpc.miloapis.com_vpcattachments.yaml

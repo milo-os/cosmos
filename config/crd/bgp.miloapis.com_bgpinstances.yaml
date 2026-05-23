@@ -4,24 +4,21 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgproutepolicies.bgp.miloapis.com
+  name: bgpinstances.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPRoutePolicy
-    listKind: BGPRoutePolicyList
-    plural: bgproutepolicies
+    kind: BGPInstance
+    listKind: BGPInstanceList
+    plural: bgpinstances
     shortNames:
-    - bgprp
-    singular: bgproutepolicy
+    - bgpi
+    singular: bgpinstance
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.instanceRef
-      name: Instance
-      type: string
-    - jsonPath: .spec.priority
-      name: Priority
+    - jsonPath: .spec.asNumber
+      name: AS
       type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -29,8 +26,8 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: BGPRoutePolicy applies import/export route policy to selected
-          BGPPeer resources.
+        description: BGPInstance configures BGP speaker parameters on all providers
+          matching spec.providerSelector.
         properties:
           apiVersion:
             description: |-
@@ -50,168 +47,57 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPRoutePolicySpec defines the desired route policy state.
+            description: BGPInstanceSpec defines the desired BGP speaker configuration.
             properties:
-              exportStatements:
-                description: ExportStatements are evaluated on routes sent to peers.
+              addressFamilies:
+                description: AddressFamilies lists the address families for this BGP
+                  instance.
                 items:
-                  description: PolicyStatement is a single route policy statement
-                    with match conditions and actions.
+                  description: AddressFamily represents a BGP address family (AFI/SAFI
+                    pair).
                   properties:
-                    actions:
-                      description: Actions define what to do with matched routes.
-                      properties:
-                        routeDisposition:
-                          description: 'RouteDisposition is the action to take: accept
-                            or reject.'
-                          enum:
-                          - Accept
-                          - Reject
-                          type: string
-                        setCommunity:
-                          description: SetCommunity adds or replaces BGP communities.
-                          properties:
-                            communities:
-                              description: Communities is the list of community values
-                                to set.
-                              items:
-                                type: string
-                              type: array
-                            method:
-                              description: Method controls whether communities are
-                                added to or replace existing ones.
-                              enum:
-                              - Add
-                              - Replace
-                              - Remove
-                              type: string
-                          required:
-                          - communities
-                          - method
-                          type: object
-                        setLocalPreference:
-                          description: SetLocalPreference sets the local preference
-                            attribute.
-                          format: int32
-                          type: integer
-                        setMED:
-                          description: SetMED sets the Multi-Exit Discriminator attribute.
-                          format: int32
-                          type: integer
-                        setNextHop:
-                          description: SetNextHop sets the next-hop address.
-                          type: string
-                      required:
-                      - routeDisposition
-                      type: object
-                    conditions:
-                      description: Conditions define what routes this statement matches.
-                      properties:
-                        communitySet:
-                          description: CommunitySet is a community set name to match.
-                          type: string
-                        nextHopSet:
-                          description: NextHopSet is a next-hop set name to match.
-                          type: string
-                        prefixSets:
-                          description: PrefixSets is a list of prefix set names to
-                            match.
-                          items:
-                            type: string
-                          type: array
-                      type: object
-                    name:
-                      description: Name is the statement identifier.
+                    afi:
+                      description: AFI is the Address Family Identifier.
+                      enum:
+                      - IPv4
+                      - IPv6
+                      type: string
+                    safi:
+                      description: SAFI is the Subsequent Address Family Identifier.
+                      enum:
+                      - Unicast
+                      - VPNUnicast
                       type: string
                   required:
-                  - actions
-                  - name
+                  - afi
+                  - safi
                   type: object
+                minItems: 1
                 type: array
-              importStatements:
-                description: ImportStatements are evaluated on routes received from
-                  peers.
-                items:
-                  description: PolicyStatement is a single route policy statement
-                    with match conditions and actions.
-                  properties:
-                    actions:
-                      description: Actions define what to do with matched routes.
-                      properties:
-                        routeDisposition:
-                          description: 'RouteDisposition is the action to take: accept
-                            or reject.'
-                          enum:
-                          - Accept
-                          - Reject
-                          type: string
-                        setCommunity:
-                          description: SetCommunity adds or replaces BGP communities.
-                          properties:
-                            communities:
-                              description: Communities is the list of community values
-                                to set.
-                              items:
-                                type: string
-                              type: array
-                            method:
-                              description: Method controls whether communities are
-                                added to or replace existing ones.
-                              enum:
-                              - Add
-                              - Replace
-                              - Remove
-                              type: string
-                          required:
-                          - communities
-                          - method
-                          type: object
-                        setLocalPreference:
-                          description: SetLocalPreference sets the local preference
-                            attribute.
-                          format: int32
-                          type: integer
-                        setMED:
-                          description: SetMED sets the Multi-Exit Discriminator attribute.
-                          format: int32
-                          type: integer
-                        setNextHop:
-                          description: SetNextHop sets the next-hop address.
-                          type: string
-                      required:
-                      - routeDisposition
-                      type: object
-                    conditions:
-                      description: Conditions define what routes this statement matches.
-                      properties:
-                        communitySet:
-                          description: CommunitySet is a community set name to match.
-                          type: string
-                        nextHopSet:
-                          description: NextHopSet is a next-hop set name to match.
-                          type: string
-                        prefixSets:
-                          description: PrefixSets is a list of prefix set names to
-                            match.
-                          items:
-                            type: string
-                          type: array
-                      type: object
-                    name:
-                      description: Name is the statement identifier.
-                      type: string
-                  required:
-                  - actions
-                  - name
-                  type: object
-                type: array
-              instanceRef:
-                description: InstanceRef is the name of the BGPInstance this policy
-                  applies to.
-                type: string
-              peerSelector:
-                description: PeerSelector selects BGPPeer resources this policy applies
-                  to.
+              asNumber:
+                description: ASNumber is the BGP autonomous system number.
+                format: int64
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              bestPath:
+                description: BestPath controls BGP best-path selection parameters.
+                properties:
+                  alwaysCompareMed:
+                    description: AlwaysCompareMed enables MED comparison across different
+                      ASes.
+                    type: boolean
+                  compareRouterId:
+                    description: CompareRouterID uses router ID as a tiebreaker in
+                      best-path selection.
+                    type: boolean
+                  deterministicMed:
+                    description: DeterministicMed enables deterministic MED comparison.
+                    type: boolean
+                type: object
+              providerSelector:
+                description: ProviderSelector selects BGPProvider resources this instance
+                  configures.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -256,20 +142,66 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              priority:
-                default: 100
+              routeReflector:
                 description: |-
-                  Priority determines policy ordering. Higher priority policies are applied first.
-                  Equal priority: sorted by metadata.name ascending.
-                format: int32
-                maximum: 1000
-                minimum: 0
-                type: integer
+                  RouteReflector configures this instance as a route reflector.
+                  Only valid in infra cluster role. Rejected in POP clusters.
+                properties:
+                  clusterID:
+                    description: |-
+                      ClusterID is the route reflector cluster ID.
+                      BGP convention uses IPv4 dotted-quad format.
+                    format: ipv4
+                    type: string
+                required:
+                - clusterID
+                type: object
+              routerID:
+                description: |-
+                  RouterID is the explicit router ID. Required when routerIDSource is Manual.
+                  BGP convention uses IPv4 dotted-quad format even on IPv6-only nodes.
+                format: ipv4
+                type: string
+              routerIDSource:
+                default: Auto
+                description: |-
+                  RouterIDSource controls how the router ID is derived.
+                  Auto derives from the last 32 bits of the backing node's IPv6 InternalIP.
+                  Manual requires an explicit routerID field.
+                enum:
+                - Auto
+                - Manual
+                type: string
+              timers:
+                description: Timers contains BGP timer defaults for this instance.
+                properties:
+                  defaultHoldTime:
+                    default: 90
+                    description: DefaultHoldTime is the default hold time in seconds.
+                    format: int32
+                    minimum: 3
+                    type: integer
+                  defaultKeepalive:
+                    default: 30
+                    description: DefaultKeepalive is the default keepalive interval
+                      in seconds.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
             required:
-            - instanceRef
+            - addressFamilies
+            - asNumber
+            - providerSelector
             type: object
+            x-kubernetes-validations:
+            - message: routerID is required when routerIDSource is Manual
+              rule: self.routerIDSource != 'Manual' || has(self.routerID)
+            - message: routeReflector.clusterID is required when routeReflector is
+                set
+              rule: '!has(self.routeReflector) || has(self.routeReflector.clusterID)'
           status:
-            description: BGPRoutePolicyStatus defines the observed state of BGPRoutePolicy.
+            description: BGPInstanceStatus defines the observed state of BGPInstance.
             properties:
               providers:
                 description: Providers holds per-provider reconciliation status.

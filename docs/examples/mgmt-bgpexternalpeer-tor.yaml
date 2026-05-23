@@ -1,0 +1,24 @@
+# BGPExternalPeer: management cluster registry entry for a top-of-rack switch.
+#
+# BGPExternalPeer resources live exclusively in the management cluster.
+# They are never propagated to POP or infra clusters.
+#
+# When the management cluster cosmos writes a BGPSession targeting this ToR,
+# it resolves the address and asNumber from this resource into the session's
+# toPeers list at write time.
+#
+# Labels on this resource allow the management cluster to select the right
+# external peers when constructing BGPSession resources (e.g., all ToR peers
+# in jp-east-1, rack A).
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPExternalPeer
+metadata:
+  name: tor-jp-east-1-rack-a-1
+  labels:
+    bgp.datum.net/pop: jp-east-1
+    bgp.datum.net/rack: rack-a
+    bgp.datum.net/peer-type: tor
+spec:
+  address: "2001:db8:fabric::1"
+  asNumber: 65000
+  description: "ToR tor-1 in rack A, jp-east-1"
