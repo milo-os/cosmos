@@ -107,11 +107,11 @@ func (p *Provider) Capabilities(_ context.Context) (provider.CapabilitySet, erro
 // overlay role this is always -1 (listen disabled). The port value is passed
 // through without enforcement here; the controller is responsible for setting
 // it correctly per BGPInstance spec.
-func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) error {
+func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) (bool, error) {
 	// Probe current state.
 	resp, err := p.client.GetBgp(ctx, &gobgpapi.GetBgpRequest{})
 	if err != nil && grpcstatus.Code(err) != codes.NotFound {
-		return fmt.Errorf("gobgp: ConfigureSpeaker GetBgp: %w", err)
+		return false, fmt.Errorf("gobgp: ConfigureSpeaker GetBgp: %w", err)
 	}
 
 	needsRestart := resp == nil || resp.Global == nil
@@ -123,13 +123,13 @@ func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSp
 	}
 
 	if !needsRestart {
-		return nil
+		return false, nil
 	}
 
 	// Stop the current BGP instance if one is running.
 	if resp != nil && resp.Global != nil {
 		if _, err := p.client.StopBgp(ctx, &gobgpapi.StopBgpRequest{}); err != nil {
-			return fmt.Errorf("gobgp: ConfigureSpeaker StopBgp: %w", err)
+			return false, fmt.Errorf("gobgp: ConfigureSpeaker StopBgp: %w", err)
 		}
 	}
 
@@ -141,10 +141,10 @@ func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSp
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("gobgp: ConfigureSpeaker StartBgp AS=%d routerID=%s port=%d: %w",
+		return false, fmt.Errorf("gobgp: ConfigureSpeaker StartBgp AS=%d routerID=%s port=%d: %w",
 			spec.ASNumber, spec.RouterID, spec.ListenPort, err)
 	}
-	return nil
+	return true, nil
 }
 
 // AddOrUpdatePeer configures a BGP session in GoBGP. It calls AddPeer on the
@@ -230,17 +230,27 @@ func (p *Provider) AddOrUpdatePolicy(ctx context.Context, spec provider.PolicySp
 }
 
 // DeletePolicy removes a route policy and all its assignments from GoBGP.
+// Must remove assignments first so that DeletePolicy(All=true) is not blocked
+// by GoBGP's inUse(activeIds) check.
 func (p *Provider) DeletePolicy(ctx context.Context, policyName string) error {
-	// Remove all assignments first to avoid "policy in use" errors.
-	if err := p.deleteAllAssignments(ctx, policyName); err != nil {
-		// Log but do not abort — stale assignments are cleaned up best-effort.
-		_ = err
+	// Remove global assignments first (import and export).
+	for _, dir := range []gobgpapi.PolicyDirection{gobgpapi.PolicyDirection_IMPORT, gobgpapi.PolicyDirection_EXPORT} {
+		_, _ = p.client.DeletePolicyAssignment(ctx, &gobgpapi.DeletePolicyAssignmentRequest{
+			Assignment: &gobgpapi.PolicyAssignment{
+				Name:      "global",
+				Direction: dir,
+				Policies:  []*gobgpapi.Policy{{Name: policyName}},
+			},
+		})
 	}
 
+	// Delete the policy; All=true ensures inUse check considers activeIds but
+	// since we removed assignments above, it passes. PreserveStatements=false
+	// cleans up the auto-named inline statements.
 	_, err := p.client.DeletePolicy(ctx, &gobgpapi.DeletePolicyRequest{
 		Policy:             &gobgpapi.Policy{Name: policyName},
 		PreserveStatements: false,
-		All:                false,
+		All:                true,
 	})
 	if err != nil && !isNotFound(err) {
 		return fmt.Errorf("gobgp: DeletePolicy %s: %w", policyName, err)
@@ -367,13 +377,25 @@ func (p *Provider) addPath(ctx context.Context, cidr string, isWithdraw bool) er
 		return fmt.Errorf("marshal NLRI for %q: %w", cidr, err)
 	}
 
+	family := &gobgpapi.Family{Afi: gobgpapi.Family_AFI_IP6, Safi: gobgpapi.Family_SAFI_UNICAST}
+
 	origin, err := anypb.New(&gobgpapi.OriginAttribute{Origin: 0}) // IGP
 	if err != nil {
 		return fmt.Errorf("marshal origin for %q: %w", cidr, err)
 	}
 
-	pattrs := []*anypb.Any{origin}
-	family := &gobgpapi.Family{Afi: gobgpapi.Family_AFI_IP6, Safi: gobgpapi.Family_SAFI_UNICAST}
+	// IPv6 locally-originated routes require MpReachNlri with a next-hop.
+	// "::" (unspecified) is the conventional self next-hop for locally-injected paths.
+	nhAttr, err := anypb.New(&gobgpapi.MpReachNLRIAttribute{
+		Family:   family,
+		NextHops: []string{"::"},
+		Nlris:    []*anypb.Any{nlri},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal MpReachNlri for %q: %w", cidr, err)
+	}
+
+	pattrs := []*anypb.Any{origin, nhAttr}
 
 	_, err = p.client.AddPath(ctx, &gobgpapi.AddPathRequest{
 		TableType: gobgpapi.TableType_GLOBAL,
@@ -404,7 +426,9 @@ func (p *Provider) applyDirectionalPolicy(ctx context.Context, name string, stmt
 	}
 
 	// Step 3: upsert PolicyAssignment (global — no per-peer scoping at this level).
+	// GoBGP requires Name="global" for the global routing table; empty string returns "empty table name".
 	assignment := &gobgpapi.PolicyAssignment{
+		Name:          "global",
 		Direction:     direction,
 		DefaultAction: gobgpapi.RouteAction_ACCEPT,
 		Policies:      []*gobgpapi.Policy{{Name: name}},
@@ -449,9 +473,17 @@ func (p *Provider) upsertDefinedSets(ctx context.Context, policyName string, stm
 }
 
 // upsertPolicy creates or replaces a GoBGP Policy with the given statements.
+//
+// GoBGP's policy lifecycle requires a specific ordering to avoid "statement
+// already defined" / "policy in use" errors across reconcile iterations:
+//  1. Remove policy assignments (so DeletePolicy's inUse check passes).
+//  2. Delete policy with All=true, PreserveStatements=false (deletes policy
+//     AND cleans up auto-named statements, since statementInUse is now false).
+//  3. Add the policy fresh with inline auto-named statements.
+//
 // An implicit final Accept statement is always appended to avoid implicit Reject.
 func (p *Provider) upsertPolicy(ctx context.Context, name string, stmts []provider.PolicyStatement) error {
-	// Build GoBGP Statements.
+	// Build GoBGP Statements (no explicit Name — GoBGP will auto-name them "{policy}_stmt{i}").
 	gStmts := make([]*gobgpapi.Statement, 0, len(stmts)+1)
 	for i, stmt := range stmts {
 		gStmt := &gobgpapi.Statement{}
@@ -482,66 +514,47 @@ func (p *Provider) upsertPolicy(ctx context.Context, name string, stmts []provid
 		Actions: &gobgpapi.Actions{RouteAction: gobgpapi.RouteAction_ACCEPT},
 	})
 
-	policy := &gobgpapi.Policy{Name: name, Statements: gStmts}
+	// Step 1: Remove global assignments so the policy is no longer "in use".
+	// GoBGP's DeletePolicy(All=true) blocks if inUse(activeIds) is true, which
+	// it will be when the policy is assigned to the global routing table.
+	for _, dir := range []gobgpapi.PolicyDirection{gobgpapi.PolicyDirection_IMPORT, gobgpapi.PolicyDirection_EXPORT} {
+		_, _ = p.client.DeletePolicyAssignment(ctx, &gobgpapi.DeletePolicyAssignmentRequest{
+			Assignment: &gobgpapi.PolicyAssignment{
+				Name:      "global",
+				Direction: dir,
+				Policies:  []*gobgpapi.Policy{{Name: name}},
+			},
+		})
+	}
 
-	_, err := p.client.AddPolicy(ctx, &gobgpapi.AddPolicyRequest{
+	// Step 2: Delete the policy. With All=true, inUse is now false (assignments
+	// removed), so deletion succeeds. PreserveStatements=false also removes the
+	// auto-named statements from the statement map (since statementInUse returns
+	// false after the policy is removed from policyMap).
+	_, _ = p.client.DeletePolicy(ctx, &gobgpapi.DeletePolicyRequest{
+		Policy:             &gobgpapi.Policy{Name: name},
+		PreserveStatements: false,
+		All:                true,
+	})
+
+	// Step 3: Create the policy fresh with new inline statements.
+	policy := &gobgpapi.Policy{Name: name, Statements: gStmts}
+	if _, err := p.client.AddPolicy(ctx, &gobgpapi.AddPolicyRequest{
 		Policy:                  policy,
 		ReferExistingStatements: false,
-	})
-	if err != nil {
-		if !isAlreadyExists(err) {
-			return fmt.Errorf("AddPolicy %s: %w", name, err)
-		}
-		// Replace: delete then re-add.
-		if _, delErr := p.client.DeletePolicy(ctx, &gobgpapi.DeletePolicyRequest{
-			Policy:             &gobgpapi.Policy{Name: name},
-			PreserveStatements: false,
-		}); delErr != nil && !isNotFound(delErr) {
-			return fmt.Errorf("DeletePolicy %s for re-add: %w", name, delErr)
-		}
-		if _, addErr := p.client.AddPolicy(ctx, &gobgpapi.AddPolicyRequest{
-			Policy:                  policy,
-			ReferExistingStatements: false,
-		}); addErr != nil {
-			return fmt.Errorf("re-add policy %s: %w", name, addErr)
-		}
+	}); err != nil {
+		return fmt.Errorf("AddPolicy %s: %w", name, err)
 	}
 	return nil
 }
 
-// deleteAllAssignments removes every PolicyAssignment that references policyName.
-// Best-effort — logs errors but does not surface them; the caller handles the
-// final policy deletion.
-func (p *Provider) deleteAllAssignments(ctx context.Context, policyName string) error {
-	for _, dir := range []gobgpapi.PolicyDirection{gobgpapi.PolicyDirection_IMPORT, gobgpapi.PolicyDirection_EXPORT} {
-		stream, err := p.client.ListPolicyAssignment(ctx, &gobgpapi.ListPolicyAssignmentRequest{
-			Direction: dir,
-		})
-		if err != nil {
-			continue
-		}
-		for {
-			resp, err := stream.Recv()
-			if err != nil {
-				break
-			}
-			if resp.Assignment == nil {
-				continue
-			}
-			for _, pol := range resp.Assignment.Policies {
-				if pol.Name != policyName {
-					continue
-				}
-				_, _ = p.client.DeletePolicyAssignment(ctx, &gobgpapi.DeletePolicyAssignmentRequest{
-					Assignment: resp.Assignment,
-					All:        false,
-				})
-				break
-			}
-		}
-	}
-	return nil
+// policyStatementName returns the explicit stable name for the i-th statement
+// of a policy. Used by DeletePolicy cleanup to find and remove statements that
+// outlived their policy.
+func policyStatementName(policyName string, i int) string {
+	return fmt.Sprintf("%s-s%d", policyName, i)
 }
+
 
 // definedSetName returns the GoBGP DefinedSet name for a policy statement.
 // Mirrors gobgpDefinedSetName from the legacy controller package.
@@ -550,18 +563,36 @@ func definedSetName(policyName string, statementIndex int) string {
 }
 
 // isAlreadyExists returns true for gRPC AlreadyExists errors and GoBGP's
-// non-standard "can't overwrite" Unknown error.
+// non-standard Unknown errors that indicate a resource already exists.
 func isAlreadyExists(err error) bool {
 	if err == nil {
 		return false
 	}
 	code := grpcstatus.Code(err)
-	msg := grpcstatus.Convert(err).Message()
-	return code == codes.AlreadyExists ||
-		(code == codes.Unknown && strings.Contains(msg, "can't overwrite the existing peer"))
+	if code == codes.AlreadyExists {
+		return true
+	}
+	if code == codes.Unknown {
+		msg := grpcstatus.Convert(err).Message()
+		return strings.Contains(msg, "can't overwrite the existing peer") ||
+			strings.Contains(msg, "already defined")
+	}
+	return false
 }
 
-// isNotFound returns true for gRPC NotFound errors.
+// isNotFound returns true for gRPC NotFound errors, including GoBGP's
+// non-standard codes.Unknown responses with "not found" in the message.
 func isNotFound(err error) bool {
-	return err != nil && grpcstatus.Code(err) == codes.NotFound
+	if err == nil {
+		return false
+	}
+	if grpcstatus.Code(err) == codes.NotFound {
+		return true
+	}
+	// GoBGP returns codes.Unknown for missing resources (e.g. "not found policy: X").
+	if grpcstatus.Code(err) == codes.Unknown {
+		msg := strings.ToLower(grpcstatus.Convert(err).Message())
+		return strings.Contains(msg, "not found")
+	}
+	return false
 }

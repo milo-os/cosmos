@@ -72,6 +72,14 @@ func (r *ProviderReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 		return ctrl.Result{}, r.handleDelete(ctx, &bgpProvider)
 	}
 
+	// Only manage providers that belong to this node.
+	// Each DaemonSet pod's controller only connects to its own local daemon (localhost).
+	// Attempting to reconcile remote-node providers would register them against the
+	// wrong daemon and corrupt peer state on unrelated GoBGP/FRR instances.
+	if r.NodeName != "" && bgpProvider.Labels[LabelNode] != r.NodeName {
+		return ctrl.Result{}, nil
+	}
+
 	// Ensure finalizer.
 	if !controllerutil.ContainsFinalizer(&bgpProvider, Finalizer) {
 		patch := client.MergeFrom(bgpProvider.DeepCopy())

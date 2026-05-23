@@ -8,6 +8,14 @@ spec:
     conditions and that the operator reconciles them without error. Requires
     a peering session to be established for the policy to have effect.
   steps:
+    - name: cleanup-stale
+      try:
+        - script:
+            content: |
+              kubectl delete bgpsession e2e-rp-w1 e2e-rp-w2 2>/dev/null || true
+              kubectl delete bgproutepolicy e2e-export-filter 2>/dev/null || true
+              echo "OK: stale resources cleaned up"
+
     - name: setup-sessions
       try:
         - script:
@@ -109,7 +117,7 @@ spec:
                   - name: accept-2001-db8
                     conditions:
                       prefixSets:
-                        - 2001-db8
+                        - "2001:db8::/32"
                     actions:
                       routeDisposition: Accept
                   - name: reject-all
@@ -133,10 +141,11 @@ spec:
         - script:
             content: |
               set -e
-              # If the operator sets any error condition the test fails.
-              CONDITIONS=$(kubectl get bgproutepolicy e2e-export-filter \
-                -o jsonpath='{.status.conditions[*].type}' 2>/dev/null || echo "")
-              if echo "$CONDITIONS" | grep -qi "error\|failed\|invalid"; then
+              # Check per-provider conditions for error reasons (conditions live in
+              # status.providers[*].conditions, not the top-level status.conditions).
+              REASONS=$(kubectl get bgproutepolicy e2e-export-filter \
+                -o jsonpath='{range .status.providers[*]}{range .conditions[*]}{.reason}{"\n"}{end}{end}' 2>/dev/null || echo "")
+              if echo "$REASONS" | grep -qi "failed\|invalid\|error"; then
                 echo "ERROR: unexpected error condition on BGPRoutePolicy"
                 kubectl get bgproutepolicy e2e-export-filter -o yaml
                 exit 1

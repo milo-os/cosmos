@@ -43,7 +43,9 @@ type Provider interface {
 	// On daemons that require a restart to change AS or router-ID (e.g. GoBGP
 	// StartBgp/StopBgp), the implementation is responsible for detecting the
 	// change and performing the restart transparently.
-	ConfigureSpeaker(ctx context.Context, spec SpeakerSpec) error
+	// Returns (true, nil) when the daemon was restarted; peers must be re-applied
+	// by the caller because a restart wipes all session state.
+	ConfigureSpeaker(ctx context.Context, spec SpeakerSpec) (restarted bool, err error)
 
 	// AddOrUpdatePeer configures a BGP session. Idempotent.
 	AddOrUpdatePeer(ctx context.Context, peer PeerSpec) error

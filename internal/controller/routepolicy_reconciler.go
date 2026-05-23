@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +30,7 @@ type RoutePolicyReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Registry *provider.Registry
+	NodeName string // from NODE_NAME env var
 }
 
 // Reconcile handles BGPRoutePolicy events.
@@ -107,13 +109,18 @@ func (r *RoutePolicyReconciler) Reconcile(ctx context.Context, req reconcile.Req
 	sortPolicies(orderedPolicies)
 
 	// Find this policy's position in the ordered list to derive its effective policy name.
+	var needsRequeue bool
 	for i := range providerList.Items {
 		bp := &providerList.Items[i]
 		if err := r.reconcileForProvider(ctx, &pol, bp, orderedPolicies, matchedPeers); err != nil {
 			log.Printf("bgp/routepolicy: %s provider %s: %v", pol.Name, bp.Name, err)
+			needsRequeue = true
 		}
 	}
 
+	if needsRequeue {
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -127,6 +134,9 @@ func (r *RoutePolicyReconciler) reconcileForProvider(
 ) error {
 	impl, ok := r.Registry.Get(bp.Name)
 	if !ok {
+		if r.NodeName != "" && bp.Labels[LabelNode] != r.NodeName {
+			return nil
+		}
 		return r.writePolicyProviderStatus(ctx, pol, bp.Name, bp.Spec.Type, false,
 			"DaemonUnavailable", "provider not in registry — daemon may be starting")
 	}
@@ -254,13 +264,12 @@ func (r *RoutePolicyReconciler) writePolicyProviderStatus(
 		updated.Status.Providers = append(updated.Status.Providers, bgpv1alpha1.ProviderStatus{
 			ProviderName: providerName,
 			Daemon:       daemonType,
-			Conditions:   []metav1.Condition{cond},
 		})
+		apimeta.SetStatusCondition(&updated.Status.Providers[len(updated.Status.Providers)-1].Conditions, cond)
 	}
 
-	fieldManager := fmt.Sprintf("cosmos-controller/%s", providerName)
 	patch := client.MergeFrom(pol)
-	if err := r.Status().Patch(ctx, updated, patch, client.ForceOwnership, client.FieldOwner(fieldManager)); err != nil {
+	if err := r.Status().Patch(ctx, updated, patch); err != nil {
 		log.Printf("bgp/routepolicy: patch status for provider %s: %v", providerName, err)
 	}
 

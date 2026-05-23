@@ -8,6 +8,14 @@ spec:
     and that withdrawal removes them. Requires at least one BGP session to be
     established so that RIB adjacency is available.
   steps:
+    - name: cleanup-stale
+      try:
+        - script:
+            content: |
+              kubectl delete bgpsession e2e-adv-w1 e2e-adv-w2 2>/dev/null || true
+              kubectl delete bgpadvertisement e2e-test-prefix 2>/dev/null || true
+              echo "OK: stale resources cleaned up"
+
     - name: setup-sessions
       try:
         - script:

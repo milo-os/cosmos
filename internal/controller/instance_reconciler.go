@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"sort"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -32,6 +33,7 @@ type InstanceReconciler struct {
 	Scheme      *runtime.Scheme
 	Registry    *provider.Registry
 	ClusterRole string
+	NodeName    string // from NODE_NAME env var
 }
 
 // Reconcile handles BGPInstance events.
@@ -80,13 +82,18 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 			"ProviderNotMatched", "no BGPProvider resources matched providerSelector")
 	}
 
+	var needsRequeue bool
 	for i := range providerList.Items {
 		bp := &providerList.Items[i]
 		if err := r.reconcileForProvider(ctx, &instance, bp); err != nil {
 			log.Printf("bgp/instance: %s provider %s: %v", instance.Name, bp.Name, err)
+			needsRequeue = true
 		}
 	}
 
+	if needsRequeue {
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -98,6 +105,9 @@ func (r *InstanceReconciler) reconcileForProvider(
 ) error {
 	impl, ok := r.Registry.Get(bp.Name)
 	if !ok {
+		if r.NodeName != "" && bp.Labels[LabelNode] != r.NodeName {
+			return nil
+		}
 		return r.writeInstanceProviderStatus(ctx, instance, bp.Name, bp.Spec.Type, false,
 			"DaemonUnavailable", "provider not in registry — daemon may be starting")
 	}
@@ -115,7 +125,7 @@ func (r *InstanceReconciler) reconcileForProvider(
 	case "FRR":
 		listenPort = 179
 	case "GoBGP":
-		listenPort = 0
+		listenPort = 179
 	}
 
 	// Convert address families.
@@ -159,9 +169,17 @@ func (r *InstanceReconciler) reconcileForProvider(
 		RouteReflector: rrConfig,
 	}
 
-	if err := impl.ConfigureSpeaker(ctx, spec); err != nil {
+	restarted, err := impl.ConfigureSpeaker(ctx, spec)
+	if err != nil {
 		return r.writeInstanceProviderStatus(ctx, instance, bp.Name, bp.Spec.Type, false,
 			"ConfigurationFailed", fmt.Sprintf("ConfigureSpeaker: %v", err))
+	}
+
+	// When the speaker was restarted (e.g. GoBGP StopBgp/StartBgp), all peer
+	// state is wiped. Bump an annotation on every BGPPeer that targets this
+	// provider so the PeerReconciler re-applies their configuration.
+	if restarted {
+		r.invalidatePeersForProvider(ctx, bp.Name)
 	}
 
 	return r.writeInstanceProviderStatus(ctx, instance, bp.Name, bp.Spec.Type, true,
@@ -259,13 +277,12 @@ func (r *InstanceReconciler) writeInstanceProviderStatus(
 		updated.Status.Providers = append(updated.Status.Providers, bgpv1alpha1.ProviderStatus{
 			ProviderName: providerName,
 			Daemon:       daemonType,
-			Conditions:   []metav1.Condition{cond},
 		})
+		apimeta.SetStatusCondition(&updated.Status.Providers[len(updated.Status.Providers)-1].Conditions, cond)
 	}
 
-	fieldManager := fmt.Sprintf("cosmos-controller/%s", providerName)
 	patch := client.MergeFrom(instance)
-	if err := r.Status().Patch(ctx, updated, patch, client.ForceOwnership, client.FieldOwner(fieldManager)); err != nil {
+	if err := r.Status().Patch(ctx, updated, patch); err != nil {
 		log.Printf("bgp/instance: patch status for provider %s: %v", providerName, err)
 	}
 
@@ -273,6 +290,31 @@ func (r *InstanceReconciler) writeInstanceProviderStatus(
 		return fmt.Errorf("%s: %s", reason, msg)
 	}
 	return nil
+}
+
+// invalidatePeersForProvider bumps a reconcile annotation on all BGPPeers that
+// reference the given provider so the PeerReconciler re-applies their config.
+// Called after a speaker restart that wipes all session state.
+func (r *InstanceReconciler) invalidatePeersForProvider(ctx context.Context, providerName string) {
+	var peerList bgpv1alpha1.BGPPeerList
+	if err := r.List(ctx, &peerList); err != nil {
+		log.Printf("bgp/instance: list BGPPeers for provider %s: %v", providerName, err)
+		return
+	}
+	for i := range peerList.Items {
+		peer := &peerList.Items[i]
+		if peer.Spec.ProviderRef != providerName {
+			continue
+		}
+		patch := client.MergeFrom(peer.DeepCopy())
+		if peer.Annotations == nil {
+			peer.Annotations = map[string]string{}
+		}
+		peer.Annotations["bgp.miloapis.com/speaker-restart"] = fmt.Sprintf("%d", peer.Generation)
+		if err := r.Patch(ctx, peer, patch); err != nil {
+			log.Printf("bgp/instance: touch BGPPeer %s: %v", peer.Name, err)
+		}
+	}
 }
 
 // setInstanceCondition sets a top-level condition on the instance status.

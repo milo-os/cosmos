@@ -80,6 +80,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 			Scheme:      mgr.GetScheme(),
 			Registry:    m.Registry,
 			ClusterRole: m.ClusterRole,
+			NodeName:    m.NodeName,
 		}).SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("setup InstanceReconciler: %w", err)
 		}
@@ -91,6 +92,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 			Client:   mgr.GetClient(),
 			Scheme:   mgr.GetScheme(),
 			Registry: m.Registry,
+			NodeName: m.NodeName,
 		}).SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("setup PeerReconciler: %w", err)
 		}
@@ -102,6 +104,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 			Client:   mgr.GetClient(),
 			Scheme:   mgr.GetScheme(),
 			Registry: m.Registry,
+			NodeName: m.NodeName,
 		}).SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("setup AdvertisementReconciler: %w", err)
 		}
@@ -113,6 +116,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 			Client:   mgr.GetClient(),
 			Scheme:   mgr.GetScheme(),
 			Registry: m.Registry,
+			NodeName: m.NodeName,
 		}).SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("setup RoutePolicyReconciler: %w", err)
 		}

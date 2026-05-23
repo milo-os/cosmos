@@ -9,6 +9,13 @@ spec:
     worker nodes. Uses the provider/session model: one BGPSession per node with
     the other two nodes as toPeers, forming a full mesh.
   steps:
+    - name: cleanup-stale
+      try:
+        - script:
+            content: |
+              kubectl delete bgpsession e2e-peering-w1 e2e-peering-w2 e2e-peering-w3 2>/dev/null || true
+              echo "OK: stale resources cleaned up"
+
     - name: resolve-worker-node-ips
       try:
         - script:
@@ -187,7 +194,7 @@ spec:
                 for SESSION in e2e-peering-w1 e2e-peering-w2 e2e-peering-w3; do
                   C=$(kubectl get bgppeers \
                     -l "bgp.miloapis.com/session-name=$SESSION" \
-                    --no-headers 2>/dev/null | grep -c . || echo 0)
+                    --no-headers 2>/dev/null | wc -l)
                   COUNT=$((COUNT + C))
                 done
                 ATTEMPTS=$((ATTEMPTS+1))
@@ -279,7 +286,7 @@ spec:
                 for SESSION in e2e-peering-w1 e2e-peering-w2 e2e-peering-w3; do
                   C=$(kubectl get bgppeers \
                     -l "bgp.miloapis.com/session-name=$SESSION" \
-                    --no-headers 2>/dev/null | grep -c . || echo 0)
+                    --no-headers 2>/dev/null | wc -l)
                   COUNT=$((COUNT + C))
                 done
                 ATTEMPTS=$((ATTEMPTS+1))

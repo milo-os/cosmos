@@ -92,7 +92,7 @@ func (p *Provider) Capabilities(_ context.Context) (provider.CapabilitySet, erro
 //	  timers bgp <keepalive> <hold>
 //	  bgp bestpath as-path multipath-relax  (when AlwaysCompareMed)
 //	  ...
-func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) error {
+func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) (bool, error) {
 	var cmds []string
 
 	cmds = append(cmds, fmt.Sprintf("router bgp %d", spec.ASNumber))
@@ -125,9 +125,11 @@ func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSp
 	cmds = append(cmds, "exit")
 
 	if err := p.vtyshConf(ctx, cmds); err != nil {
-		return fmt.Errorf("frr: ConfigureSpeaker AS=%d: %w", spec.ASNumber, err)
+		return false, fmt.Errorf("frr: ConfigureSpeaker AS=%d: %w", spec.ASNumber, err)
 	}
-	return nil
+	// FRR applies configuration incrementally via vtysh; it does not lose peers
+	// on reconfiguration. Always return restarted=false.
+	return false, nil
 }
 
 // AddOrUpdatePeer configures a BGP neighbor in FRR via vtysh.

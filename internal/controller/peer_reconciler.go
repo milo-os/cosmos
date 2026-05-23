@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -30,6 +31,7 @@ type PeerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Registry *provider.Registry
+	NodeName string // from NODE_NAME env var; used to distinguish local vs remote providers
 }
 
 // Reconcile handles BGPPeer events.
@@ -76,12 +78,17 @@ func (r *PeerReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 			"ProviderNotMatched", "no BGPProvider resources matched")
 	}
 
+	var needsRequeue bool
 	for _, bp := range providers {
 		if err := r.reconcileForProvider(ctx, &peer, &instance, bp); err != nil {
 			log.Printf("bgp/peer: %s provider %s: %v", peer.Name, bp.Name, err)
+			needsRequeue = true
 		}
 	}
 
+	if needsRequeue {
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -210,6 +217,12 @@ func (r *PeerReconciler) reconcileForProvider(
 
 	impl, ok := r.Registry.Get(bp.Name)
 	if !ok {
+		// Remote providers (belonging to a different node) are never in this controller's
+		// registry. Skip them silently — they are reconciled by the correct node's controller.
+		if r.NodeName != "" && bp.Labels[LabelNode] != r.NodeName {
+			return nil
+		}
+		// Local provider not yet in registry — daemon may still be starting up.
 		return r.writePeerProviderStatus(ctx, peer, bp.Name, bp.Spec.Type, false,
 			"DaemonUnavailable", "provider not in registry — daemon may be starting")
 	}
@@ -303,13 +316,12 @@ func (r *PeerReconciler) writePeerProviderStatus(
 		updated.Status.Providers = append(updated.Status.Providers, bgpv1alpha1.ProviderStatus{
 			ProviderName: providerName,
 			Daemon:       daemonType,
-			Conditions:   []metav1.Condition{cond},
 		})
+		apimeta.SetStatusCondition(&updated.Status.Providers[len(updated.Status.Providers)-1].Conditions, cond)
 	}
 
-	fieldManager := fmt.Sprintf("cosmos-controller/%s", providerName)
 	patch := client.MergeFrom(peer)
-	if err := r.Status().Patch(ctx, updated, patch, client.ForceOwnership, client.FieldOwner(fieldManager)); err != nil {
+	if err := r.Status().Patch(ctx, updated, patch); err != nil {
 		log.Printf("bgp/peer: patch status for provider %s: %v", providerName, err)
 	}
 
@@ -342,8 +354,31 @@ func (r *PeerReconciler) handleDelete(ctx context.Context, peer *bgpv1alpha1.BGP
 		return fmt.Errorf("list providers for deletion: %w", err)
 	}
 
+	// Snapshot all BGPPeers once for the duplicate-owner check below.
+	var allPeers bgpv1alpha1.BGPPeerList
+	if err := r.List(ctx, &allPeers); err != nil {
+		return fmt.Errorf("list BGPPeers for deletion check: %w", err)
+	}
+
 	blocked := false
 	for _, bp := range providers {
+		// Skip DeletePeer if another live BGPPeer still owns this (provider, address) pair.
+		// GoBGP holds one session per address; removing it here would break the other peer.
+		otherExists := false
+		for _, other := range allPeers.Items {
+			if other.Name == peer.Name || !other.DeletionTimestamp.IsZero() {
+				continue
+			}
+			if other.Spec.ProviderRef == bp.Name && other.Spec.Address == peer.Spec.Address {
+				otherExists = true
+				break
+			}
+		}
+		if otherExists {
+			log.Printf("bgp/peer: delete %s: another BGPPeer owns %s on %s — skipping DeletePeer", peer.Name, peer.Spec.Address, bp.Name)
+			continue
+		}
+
 		impl, ok := r.Registry.Get(bp.Name)
 		if !ok {
 			log.Printf("bgp/peer: delete %s: provider %s not in registry — skipping", peer.Name, bp.Name)
