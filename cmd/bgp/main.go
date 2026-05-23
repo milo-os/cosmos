@@ -43,6 +43,7 @@ func main() {
 type options struct {
 	metricsAddr string
 	healthAddr  string
+	clusterRole string
 }
 
 func newRootCommand() *cobra.Command {
@@ -63,6 +64,7 @@ BGPSession, and BGPExternalPeer CRDs.`,
 
 	cmd.Flags().StringVar(&opts.metricsAddr, "metrics-addr", ":8082", "Address to serve Prometheus metrics on")
 	cmd.Flags().StringVar(&opts.healthAddr, "health-addr", ":8083", "Address to serve health/readiness probes on")
+	cmd.Flags().StringVar(&opts.clusterRole, "cluster-role", "", "Override cluster role (pop|infra|management); skips cosmos-config ConfigMap lookup when set")
 
 	return cmd
 }
@@ -84,11 +86,17 @@ func run(ctx context.Context, opts *options) error {
 		log.Printf("bgp: NODE_NAME not set — provider auto-bootstrap disabled")
 	}
 
-	// Read clusterRole from the cosmos-config ConfigMap before starting the manager.
-	// Uses a direct (non-cached) client so this works before the cache is populated.
-	clusterRole, err := readClusterRole(ctx)
-	if err != nil {
-		return fmt.Errorf("read cluster role: %w", err)
+	// Resolve clusterRole: use the flag value directly when set; otherwise read from
+	// the cosmos-config ConfigMap in cosmos-system (production default).
+	clusterRole := opts.clusterRole
+	if clusterRole == "" {
+		var err error
+		clusterRole, err = readClusterRole(ctx)
+		if err != nil {
+			return fmt.Errorf("read cluster role: %w", err)
+		}
+	} else if !validClusterRoles[clusterRole] {
+		return fmt.Errorf("invalid --cluster-role %q: must be one of pop, infra, management", clusterRole)
 	}
 
 	log.Printf("bgp: starting (clusterRole=%s node=%s)", clusterRole, nodeName)

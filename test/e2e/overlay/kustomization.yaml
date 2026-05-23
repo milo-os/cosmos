@@ -30,3 +30,9 @@ patches:
                 fieldPath: spec.nodeName
           - name: LOCAL_ENDPOINT
             value: "$(NODE_NAME)"
+      - op: replace
+        path: /spec/template/spec/containers/0/args
+        value:
+          - --metrics-addr=:8086
+          - --health-addr=:8087
+          - --cluster-role=pop
