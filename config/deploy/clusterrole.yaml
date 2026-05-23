@@ -3,37 +3,37 @@ kind: ClusterRole
 metadata:
   name: bgp-operator
 rules:
-  # Node access: resolve IPv6 addresses for route watcher and config reconciler.
+  # Node access: resolve node names and addresses for endpoint registration.
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
   # BGPConfiguration: read global BGP config, update status.
   - apiGroups: ["bgp.miloapis.com"]
     resources: ["bgpconfigurations"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["bgp.miloapis.com"]
     resources: ["bgpconfigurations/status"]
     verbs: ["get", "update", "patch"]
-  # BGPEndpoint: read endpoints to resolve session peers.
+  # BGPEndpoint: full management — operator creates/updates/deletes per-node endpoints.
   - apiGroups: ["bgp.miloapis.com"]
     resources: ["bgpendpoints"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["bgp.miloapis.com"]
     resources: ["bgpendpoints/status"]
     verbs: ["get", "update", "patch"]
-  # BGPSession: full management — operator creates/updates/deletes sessions.
+  # BGPPeeringPolicy: full management.
+  - apiGroups: ["bgp.miloapis.com"]
+    resources: ["bgppeeringpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["bgp.miloapis.com"]
+    resources: ["bgppeeringpolicies/status"]
+    verbs: ["get", "update", "patch"]
+  # BGPSession: full management.
   - apiGroups: ["bgp.miloapis.com"]
     resources: ["bgpsessions"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["bgp.miloapis.com"]
     resources: ["bgpsessions/status"]
-    verbs: ["get", "update", "patch"]
-  # BGPPeeringPolicy: read policies, update status.
-  - apiGroups: ["bgp.miloapis.com"]
-    resources: ["bgppeeringpolicies"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["bgp.miloapis.com"]
-    resources: ["bgppeeringpolicies/status"]
     verbs: ["get", "update", "patch"]
   # BGPAdvertisement: full management.
   - apiGroups: ["bgp.miloapis.com"]

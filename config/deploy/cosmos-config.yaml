@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cosmos-config
+  namespace: cosmos-system
+data:
+  # clusterRole controls which reconcilers are active on this node.
+  # Valid values: pop, infra, management.
+  # pop and infra: run all reconcilers (ProviderReconciler, InstanceReconciler, PeerReconciler,
+  #   AdvertisementReconciler, RoutePolicyReconciler, SessionReconciler, ExternalPeerReconciler).
+  # management: run only SessionReconciler and ExternalPeerReconciler.
+  clusterRole: pop

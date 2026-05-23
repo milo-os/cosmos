@@ -116,7 +116,7 @@ tasks:
           --timeout=180s
 
   deploy-crds:
-    desc: Apply BGP CRDs and wait for Established
+    desc: Apply BGP and VPC CRDs and wait for Established
     cmds:
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.REPO_ROOT}}/config/crd
       - KUBECONFIG={{.KUBECONFIG}} kubectl wait
@@ -127,6 +127,8 @@ tasks:
           crd/bgppeeringpolicies.bgp.miloapis.com
           crd/bgpadvertisements.bgp.miloapis.com
           crd/bgproutepolicies.bgp.miloapis.com
+          crd/vpcs.vpc.miloapis.com
+          crd/vpcattachments.vpc.miloapis.com
           --timeout=60s
 
   deploy-bgp-operator:

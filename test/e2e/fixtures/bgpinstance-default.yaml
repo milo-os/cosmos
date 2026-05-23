@@ -1,0 +1,11 @@
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPInstance
+metadata:
+  name: default
+spec:
+  providerSelector: {}
+  asNumber: 65000
+  routerIDSource: Auto
+  addressFamilies:
+    - afi: IPv6
+      safi: Unicast
