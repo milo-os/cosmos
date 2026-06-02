@@ -9,6 +9,7 @@ import (
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -320,6 +321,31 @@ func (r *RoutePolicyReconciler) mapInstanceToPolicies(ctx context.Context, obj c
 	return reqs
 }
 
+// mapProviderToPolicies re-triggers reconciliation for all BGPRoutePolicies
+// whose BGPInstance's providerSelector matches a changed BGPProvider.
+func (r *RoutePolicyReconciler) mapProviderToPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
+	bp, ok := obj.(*providersv1alpha1.BGPProvider)
+	if !ok {
+		return nil
+	}
+	var polList bgpv1alpha1.BGPRoutePolicyList
+	if err := r.List(ctx, &polList); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, pol := range polList.Items {
+		var instance bgpv1alpha1.BGPInstance
+		if err := r.Get(ctx, types.NamespacedName{Name: pol.Spec.InstanceRef}, &instance); err != nil {
+			continue
+		}
+		sel, err := metav1.LabelSelectorAsSelector(&instance.Spec.ProviderSelector)
+		if err == nil && sel.Matches(labels.Set(bp.Labels)) {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: pol.Name}})
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers RoutePolicyReconciler with controller-runtime.
 func (r *RoutePolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -327,6 +353,10 @@ func (r *RoutePolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&bgpv1alpha1.BGPInstance{},
 			handler.EnqueueRequestsFromMapFunc(r.mapInstanceToPolicies),
+		).
+		Watches(
+			&providersv1alpha1.BGPProvider{},
+			handler.EnqueueRequestsFromMapFunc(r.mapProviderToPolicies),
 		).
 		Complete(r)
 }

@@ -422,6 +422,34 @@ func (r *PeerReconciler) mapInstanceToPeers(ctx context.Context, obj client.Obje
 	return reqs
 }
 
+// mapProviderToPeers re-triggers reconciliation for all BGPPeers that target a
+// changed BGPProvider, bypassing exponential backoff so peers configure
+// immediately when a daemon becomes available after a DaemonUnavailable failure.
+func (r *PeerReconciler) mapProviderToPeers(ctx context.Context, obj client.Object) []reconcile.Request {
+	bp, ok := obj.(*providersv1alpha1.BGPProvider)
+	if !ok {
+		return nil
+	}
+	var peerList bgpv1alpha1.BGPPeerList
+	if err := r.List(ctx, &peerList); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, peer := range peerList.Items {
+		if peer.Spec.ProviderRef == bp.Name {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: peer.Name}})
+			continue
+		}
+		if peer.Spec.ProviderSelector != nil {
+			sel, err := metav1.LabelSelectorAsSelector(peer.Spec.ProviderSelector)
+			if err == nil && sel.Matches(labels.Set(bp.Labels)) {
+				reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: peer.Name}})
+			}
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers PeerReconciler with controller-runtime.
 func (r *PeerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -429,6 +457,10 @@ func (r *PeerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&bgpv1alpha1.BGPInstance{},
 			handler.EnqueueRequestsFromMapFunc(r.mapInstanceToPeers),
+		).
+		Watches(
+			&providersv1alpha1.BGPProvider{},
+			handler.EnqueueRequestsFromMapFunc(r.mapProviderToPeers),
 		).
 		Complete(r)
 }

@@ -8,6 +8,7 @@ import (
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -275,6 +276,31 @@ func (r *AdvertisementReconciler) mapInstanceToAdvertisements(ctx context.Contex
 	return reqs
 }
 
+// mapProviderToAdvertisements re-triggers reconciliation for all BGPAdvertisements
+// whose BGPInstance's providerSelector matches a changed BGPProvider.
+func (r *AdvertisementReconciler) mapProviderToAdvertisements(ctx context.Context, obj client.Object) []reconcile.Request {
+	bp, ok := obj.(*providersv1alpha1.BGPProvider)
+	if !ok {
+		return nil
+	}
+	var advList bgpv1alpha1.BGPAdvertisementList
+	if err := r.List(ctx, &advList); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, adv := range advList.Items {
+		var instance bgpv1alpha1.BGPInstance
+		if err := r.Get(ctx, types.NamespacedName{Name: adv.Spec.InstanceRef}, &instance); err != nil {
+			continue
+		}
+		sel, err := metav1.LabelSelectorAsSelector(&instance.Spec.ProviderSelector)
+		if err == nil && sel.Matches(labels.Set(bp.Labels)) {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: adv.Name}})
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers AdvertisementReconciler with controller-runtime.
 func (r *AdvertisementReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -282,6 +308,10 @@ func (r *AdvertisementReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&bgpv1alpha1.BGPInstance{},
 			handler.EnqueueRequestsFromMapFunc(r.mapInstanceToAdvertisements),
+		).
+		Watches(
+			&providersv1alpha1.BGPProvider{},
+			handler.EnqueueRequestsFromMapFunc(r.mapProviderToAdvertisements),
 		).
 		Complete(r)
 }

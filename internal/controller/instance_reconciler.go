@@ -11,11 +11,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
@@ -376,9 +378,34 @@ func (r *InstanceReconciler) handleDelete(ctx context.Context, instance *bgpv1al
 	return r.Patch(ctx, instance, patch)
 }
 
+// mapProviderToInstances re-triggers reconciliation for all BGPInstances whose
+// providerSelector matches a changed BGPProvider.
+func (r *InstanceReconciler) mapProviderToInstances(ctx context.Context, obj client.Object) []reconcile.Request {
+	bp, ok := obj.(*providersv1alpha1.BGPProvider)
+	if !ok {
+		return nil
+	}
+	var instanceList bgpv1alpha1.BGPInstanceList
+	if err := r.List(ctx, &instanceList); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, instance := range instanceList.Items {
+		sel, err := metav1.LabelSelectorAsSelector(&instance.Spec.ProviderSelector)
+		if err == nil && sel.Matches(labels.Set(bp.Labels)) {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: instance.Name}})
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers InstanceReconciler with controller-runtime.
 func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bgpv1alpha1.BGPInstance{}).
+		Watches(
+			&providersv1alpha1.BGPProvider{},
+			handler.EnqueueRequestsFromMapFunc(r.mapProviderToInstances),
+		).
 		Complete(r)
 }
