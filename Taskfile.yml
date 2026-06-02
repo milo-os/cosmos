@@ -1,41 +1,88 @@
 version: '3'
 
 vars:
-  GOBIN: "{{.ROOT_DIR}}/bin"
-  CHAINSAW_VERSION: v0.2.12
-  CONTROLLER_GEN_VERSION: v0.18.0
+  LOCALBIN:
+    sh: echo "$(pwd)/bin"
+  GOBIN:
+    sh: |
+      gobin=$(go env GOBIN)
+      [ -n "$gobin" ] && echo "$gobin" || echo "$(go env GOPATH)/bin"
+  GOLANGCI_LINT: '{{.LOCALBIN}}/golangci-lint'
+  CONTROLLER_GEN: '{{.LOCALBIN}}/controller-gen'
+  CHAINSAW: '{{.LOCALBIN}}/chainsaw'
   GOLANGCI_LINT_VERSION: v2.1.6
+  CONTROLLER_GEN_VERSION: v0.18.0
+  CHAINSAW_VERSION: v0.2.12
 
 tasks:
-  build:
-    desc: Build all packages
+  default:
+    silent: true
     cmds:
-      - go build ./...
+      - task --list
+
+  ##
+  ## Development
+  ##
+
+  fmt:
+    desc: Run go fmt against code
+    run: once
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: Run go vet against code
+    run: once
+    cmds:
+      - GOOS=linux go vet ./...
 
   test:
     desc: Run unit tests
+    deps: [fmt, vet]
     cmds:
-      - go test ./...
+      - GOOS=linux go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
 
   lint:
-    desc: Run golangci-lint
+    desc: Run golangci-lint linter
+    deps: [golangci-lint]
     cmds:
-      - golangci-lint run ./...
+      - '{{.GOLANGCI_LINT}} run'
 
-  vet:
-    desc: Run go vet
+  lint-fix:
+    desc: Run golangci-lint linter and perform fixes
+    deps: [golangci-lint]
     cmds:
-      - go vet ./...
+      - '{{.GOLANGCI_LINT}} run --fix'
+
+  ##
+  ## Build
+  ##
+
+  build:
+    desc: Build all packages
+    deps: [fmt, vet]
+    cmds:
+      - go build ./...
+
+  ##
+  ## Code generation
+  ##
 
   generate:
     desc: Generate deepcopy methods
+    deps: [controller-gen]
     cmds:
-      - controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
+      - '{{.CONTROLLER_GEN}} object:headerFile="hack/boilerplate.go.txt" paths="./..."'
 
   manifests:
     desc: Generate CRD manifests
+    deps: [controller-gen]
     cmds:
-      - controller-gen crd paths="./api/..." output:crd:artifacts:config=config/crd
+      - '{{.CONTROLLER_GEN}} crd paths="./api/..." output:crd:artifacts:config=config/crd'
+
+  ##
+  ## Testing
+  ##
 
   test-e2e:
     desc: Run the full E2E suite (create cluster, deploy, test, teardown)
@@ -43,13 +90,63 @@ tasks:
     cmds:
       - task default
 
-  chainsaw:
-    desc: Install chainsaw test runner
+  ##
+  ## Cleanup
+  ##
+
+  clean:
+    desc: Remove build artifacts and temporary files
     cmds:
-      - GOBIN={{.GOBIN}} go install github.com/kyverno/chainsaw@{{.CHAINSAW_VERSION}}
+      - rm -rf bin/
+      - rm -f cover.out
+
+  ##
+  ## Dependencies
+  ##
+
+  golangci-lint:
+    desc: Download golangci-lint locally if necessary
+    run: once
+    cmds:
+      - task: install-tool
+        vars:
+          TARGET: '{{.GOLANGCI_LINT}}'
+          PACKAGE: github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+          VERSION: '{{.GOLANGCI_LINT_VERSION}}'
+
+  controller-gen:
+    desc: Download controller-gen locally if necessary
+    run: once
+    cmds:
+      - task: install-tool
+        vars:
+          TARGET: '{{.CONTROLLER_GEN}}'
+          PACKAGE: sigs.k8s.io/controller-tools/cmd/controller-gen
+          VERSION: '{{.CONTROLLER_GEN_VERSION}}'
+
+  chainsaw:
+    desc: Download chainsaw locally if necessary
+    run: once
+    cmds:
+      - task: install-tool
+        vars:
+          TARGET: '{{.CHAINSAW}}'
+          PACKAGE: github.com/kyverno/chainsaw
+          VERSION: '{{.CHAINSAW_VERSION}}'
 
   tools:
     desc: Install all development tools
+    deps: [golangci-lint, controller-gen, chainsaw]
+
+  install-tool:
+    internal: true
     cmds:
-      - GOBIN={{.GOBIN}} go install github.com/kyverno/chainsaw@{{.CHAINSAW_VERSION}}
-      - GOBIN={{.GOBIN}} go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_GEN_VERSION}}
+      - mkdir -p {{.LOCALBIN}}
+      - |
+        if [ ! -f "{{.TARGET}}-{{.VERSION}}" ]; then
+          echo "Downloading {{.PACKAGE}}@{{.VERSION}}"
+          rm -f "{{.TARGET}}" || true
+          GOBIN={{.LOCALBIN}} go install {{.PACKAGE}}@{{.VERSION}}
+          mv "{{.TARGET}}" "{{.TARGET}}-{{.VERSION}}"
+        fi
+        ln -sf "{{.TARGET}}-{{.VERSION}}" "{{.TARGET}}"
