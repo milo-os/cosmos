@@ -4,22 +4,25 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgpadvertisements.bgp.miloapis.com
+  name: bgppeers.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPAdvertisement
-    listKind: BGPAdvertisementList
-    plural: bgpadvertisements
+    kind: BGPPeer
+    listKind: BGPPeerList
+    plural: bgppeers
     shortNames:
-    - bgpadv
-    singular: bgpadvertisement
+    - bgppr
+    singular: bgppeer
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.instanceRef
-      name: Instance
+    - jsonPath: .spec.address
+      name: Address
       type: string
+    - jsonPath: .spec.asNumber
+      name: AS
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -27,9 +30,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          BGPAdvertisement injects infrastructure prefixes into the BGP RIB.
-          Used for node loopback /128 and SRv6 locator prefix advertisement.
-          Not used for per-workload or per-VRF routes — CNI owns those.
+          BGPPeer configures one side of a BGP session on matched providers.
+          Generated exclusively by SessionReconciler from BGPSession resources.
+          Never written directly.
         properties:
           apiVersion:
             description: |-
@@ -49,17 +52,92 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPAdvertisementSpec defines the desired advertisement state.
+            description: BGPPeerSpec defines the desired state of BGPPeer.
             properties:
-              instanceRef:
-                description: |-
-                  InstanceRef is the name of the BGPInstance to advertise through.
-                  Must reference a BGPInstance bound to FRR providers with Unicast families.
+              address:
+                description: Address is the peer's BGP address.
+                format: ipv6
                 type: string
-              peerSelector:
+              addressFamilies:
                 description: |-
-                  PeerSelector restricts advertisement to matched BGPPeer resources.
-                  If absent, advertise to all peers on matched providers.
+                  AddressFamilies overrides the instance address families for this peer.
+                  If absent, inherited from the referenced BGPInstance.
+                items:
+                  description: AddressFamily represents a BGP address family (AFI/SAFI
+                    pair).
+                  properties:
+                    afi:
+                      description: AFI is the Address Family Identifier.
+                      enum:
+                      - IPv4
+                      - IPv6
+                      type: string
+                    safi:
+                      description: SAFI is the Subsequent Address Family Identifier.
+                      enum:
+                      - Unicast
+                      - VPNUnicast
+                      type: string
+                  required:
+                  - afi
+                  - safi
+                  type: object
+                type: array
+              allowAsIn:
+                description: |-
+                  AllowAsIn permits the peer's AS number to appear in received AS paths.
+                  Used on underlay eBGP sessions with a global AS.
+                format: int32
+                maximum: 10
+                minimum: 1
+                type: integer
+              asNumber:
+                description: ASNumber is the peer's autonomous system number.
+                format: int64
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              ebgpMultihop:
+                description: |-
+                  EBGPMultihop sets the eBGP multihop TTL.
+                  Mutually exclusive with ttlSecurity. Invalid on iBGP sessions.
+                format: int32
+                maximum: 255
+                minimum: 1
+                type: integer
+              instanceRef:
+                description: InstanceRef is the name of the BGPInstance for this peer
+                  session.
+                type: string
+              passive:
+                description: Passive enables passive mode — do not initiate the TCP
+                  connection.
+                type: boolean
+              passwordSecretRef:
+                description: PasswordSecretRef references a Secret containing the
+                  BGP session password.
+                properties:
+                  key:
+                    description: Key is the key within the Secret.
+                    type: string
+                  name:
+                    description: Name is the name of the Secret.
+                    type: string
+                required:
+                - key
+                - name
+                type: object
+              providerRef:
+                description: |-
+                  ProviderRef names a single BGPProvider.
+                  Use for topology-specific sessions (underlay eBGP, RR client designations).
+                  Mutually exclusive with providerSelector.
+                type: string
+              providerSelector:
+                description: |-
+                  ProviderSelector selects multiple BGPProvider resources.
+                  Use for cluster-wide sessions (e.g. all overlay providers peer with same RRs).
+                  Mutually exclusive with providerRef.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -104,22 +182,53 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              prefixes:
-                description: Prefixes is the list of IPv4 or IPv6 unicast CIDR blocks
-                  to advertise.
-                items:
-                  type: string
-                minItems: 1
-                type: array
+              routeReflectorClient:
+                description: |-
+                  RouteReflectorClient designates the remote peer as an RR client.
+                  Set on RR-side peers only. Never on client-side peers.
+                type: boolean
+              timers:
+                description: Timers overrides the instance timer defaults for this
+                  peer.
+                properties:
+                  holdTime:
+                    description: HoldTime overrides the instance default hold time.
+                    format: int32
+                    minimum: 3
+                    type: integer
+                  keepalive:
+                    description: Keepalive overrides the instance default keepalive
+                      interval.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
+              ttlSecurity:
+                description: |-
+                  TTLSecurity sets the TTL security hop count.
+                  Mutually exclusive with ebgpMultihop.
+                format: int32
+                maximum: 254
+                minimum: 1
+                type: integer
             required:
+            - address
+            - asNumber
             - instanceRef
-            - prefixes
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of providerRef or providerSelector must be set
+              rule: has(self.providerRef) != has(self.providerSelector)
+            - message: ebgpMultihop and ttlSecurity are mutually exclusive
+              rule: '!(has(self.ebgpMultihop) && has(self.ttlSecurity))'
+            - message: passwordSecretRef requires both name and key
+              rule: '!has(self.passwordSecretRef) || (has(self.passwordSecretRef.name)
+                && has(self.passwordSecretRef.key))'
           status:
-            description: BGPAdvertisementStatus defines the observed state of BGPAdvertisement.
+            description: BGPPeerStatus defines the observed state of BGPPeer.
             properties:
               conditions:
-                description: Conditions are top-level conditions for this BGPAdvertisement.
+                description: Conditions are top-level conditions for this BGPPeer.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

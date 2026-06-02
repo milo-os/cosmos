@@ -4,34 +4,35 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgpendpoints.bgp.miloapis.com
+  name: bgpproviders.providers.bgp.miloapis.com
 spec:
-  group: bgp.miloapis.com
+  group: providers.bgp.miloapis.com
   names:
-    kind: BGPEndpoint
-    listKind: BGPEndpointList
-    plural: bgpendpoints
+    kind: BGPProvider
+    listKind: BGPProviderList
+    plural: bgpproviders
     shortNames:
-    - bgpep
-    singular: bgpendpoint
+    - bgpp
+    singular: bgpprovider
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.address
-      name: Address
+    - jsonPath: .spec.type
+      name: Type
       type: string
-    - jsonPath: .spec.asNumber
-      name: ASN
-      type: integer
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
-          BGPEndpoint declares a BGP speaker endpoint — an address and AS number that
-          other speakers can peer with. Endpoints are produced by the node auto-peer
-          operator (one per node) or created manually by platform operators.
-          BGPPeeringPolicy resources reference endpoints via label selectors to
-          automate session creation.
+          BGPProvider represents one instance of a BGP daemon process that cosmos can configure.
+          It carries the daemon type, endpoint, capabilities, and node binding via labels.
+          Auto-bootstrapped at controller startup for local daemons.
         properties:
           apiVersion:
             description: |-
@@ -51,53 +52,91 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              BGPEndpointSpec declares the identity of a BGP speaker endpoint.
-              An endpoint is a self-advertisement: "I exist at this address, with this AS."
+            description: BGPProviderSpec defines the desired state of BGPProvider.
             properties:
-              address:
-                description: Address is the IPv6 address of this BGP speaker.
-                format: ipv6
-                type: string
-              addressFamilies:
+              frr:
                 description: |-
-                  AddressFamilies lists the address families this endpoint supports.
-                  Defaults to IPv6 unicast.
-                items:
-                  description: AddressFamily identifies a BGP address family.
-                  properties:
-                    afi:
-                      description: AFI is the Address Family Indicator.
-                      enum:
-                      - IPv4
-                      - IPv6
-                      type: string
-                    safi:
-                      default: Unicast
-                      description: SAFI is the Subsequent Address Family Indicator.
-                      enum:
-                      - Unicast
-                      - Multicast
-                      type: string
-                  required:
-                  - afi
-                  type: object
-                type: array
-              asNumber:
-                description: ASNumber is the AS number this endpoint belongs to.
-                format: int32
-                maximum: 4294967295
-                minimum: 1
-                type: integer
+                  FRR contains FRR northbound gRPC configuration.
+                  Required when type is FRR.
+                properties:
+                  endpoint:
+                    default: localhost:50051
+                    description: |-
+                      Endpoint is the gRPC endpoint for the FRR northbound API.
+                      In v1alpha1 only loopback addresses are accepted.
+                    type: string
+                type: object
+              gobgp:
+                description: |-
+                  GoBGP contains GoBGP gRPC configuration.
+                  Required when type is GoBGP.
+                properties:
+                  endpoint:
+                    default: localhost:50051
+                    description: |-
+                      Endpoint is the gRPC endpoint for the GoBGP API.
+                      In v1alpha1 only loopback addresses are accepted.
+                    type: string
+                type: object
+              type:
+                description: Type is the BGP daemon type. Must match the set daemon
+                  block.
+                enum:
+                - FRR
+                - GoBGP
+                type: string
             required:
-            - address
-            - asNumber
+            - type
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of frr or gobgp must be set
+              rule: has(self.frr) != has(self.gobgp)
+            - message: type must match the set daemon block
+              rule: 'self.type == ''FRR'' ? has(self.frr) : has(self.gobgp)'
           status:
-            description: BGPEndpointStatus reflects the observed state of a BGPEndpoint.
+            description: BGPProviderStatus defines the observed state of BGPProvider.
             properties:
+              capabilities:
+                description: |-
+                  Capabilities is the self-reported capability set.
+                  Populated by cosmos at reconcile time from compile-time constants in v1alpha1.
+                properties:
+                  addressFamilies:
+                    description: AddressFamilies lists the AFI/SAFI combinations supported.
+                    items:
+                      description: AddressFamilyCapability represents a supported
+                        AFI/SAFI combination.
+                      properties:
+                        afi:
+                          description: AFI is the Address Family Identifier.
+                          enum:
+                          - IPv4
+                          - IPv6
+                          type: string
+                        safi:
+                          description: SAFI is the Subsequent Address Family Identifier.
+                          enum:
+                          - Unicast
+                          - VPNUnicast
+                          type: string
+                      required:
+                      - afi
+                      - safi
+                      type: object
+                    type: array
+                  bfd:
+                    description: BFD indicates whether the daemon supports BFD.
+                    type: boolean
+                  routeReflection:
+                    description: RouteReflection indicates whether the daemon supports
+                      route reflector operation.
+                    type: boolean
+                required:
+                - bfd
+                - routeReflection
+                type: object
               conditions:
-                description: Conditions describe the current state of the endpoint.
+                description: Conditions reflect the current state of the BGPProvider.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -156,9 +195,13 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              daemon:
+                description: Daemon is the daemon type of this provider.
+                type: string
+              resolvedEndpoint:
+                description: ResolvedEndpoint is the endpoint currently in use.
+                type: string
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true

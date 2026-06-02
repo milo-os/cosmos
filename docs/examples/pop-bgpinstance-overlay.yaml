@@ -1,0 +1,24 @@
+# BGPInstance for the GoBGP overlay plane on a POP node.
+#
+# This instance configures GoBGP as a VPNv4/VPNv6 BGP speaker for the overlay
+# plane. The overlay plane distributes L3VPN routes for tenant workloads over
+# the underlay fabric.
+#
+# The CNI plugin manages VRF lifecycle (AddVrf/DeleteVrf) and path injection
+# (AddPath/DeletePath) on this GoBGP instance independently of cosmos.
+# See the Operational Contract in docs/api/README.md for ownership boundaries.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPInstance
+metadata:
+  name: overlay
+spec:
+  providerSelector:
+    matchLabels:
+      bgp.datum.net/plane: overlay
+      bgp.miloapis.com/daemon: gobgp
+  asNumber: 65000
+  addressFamilies:
+    - afi: IPv4
+      safi: VPNUnicast
+    - afi: IPv6
+      safi: VPNUnicast

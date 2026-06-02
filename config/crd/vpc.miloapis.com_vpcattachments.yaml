@@ -57,22 +57,6 @@ spec:
                 - addresses
                 - name
                 type: object
-              routes:
-                description: Routes defines additional routing entries for the VPCAttachment.
-                items:
-                  description: VPCAttachmentRoute defines a routing entry for the
-                    VPCAttachment.
-                  properties:
-                    destination:
-                      description: IPv4 or IPv6 destination network in CIDR notation.
-                      type: string
-                    via:
-                      description: Via is the next hop address.
-                      type: string
-                  required:
-                  - destination
-                  type: object
-                type: array
               vpc:
                 description: VPC this attachment belongs to.
                 properties:

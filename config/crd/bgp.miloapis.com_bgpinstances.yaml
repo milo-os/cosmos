@@ -4,32 +4,30 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgpadvertisements.bgp.miloapis.com
+  name: bgpinstances.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPAdvertisement
-    listKind: BGPAdvertisementList
-    plural: bgpadvertisements
+    kind: BGPInstance
+    listKind: BGPInstanceList
+    plural: bgpinstances
     shortNames:
-    - bgpadv
-    singular: bgpadvertisement
+    - bgpi
+    singular: bgpinstance
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.instanceRef
-      name: Instance
-      type: string
+    - jsonPath: .spec.asNumber
+      name: AS
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          BGPAdvertisement injects infrastructure prefixes into the BGP RIB.
-          Used for node loopback /128 and SRv6 locator prefix advertisement.
-          Not used for per-workload or per-VRF routes — CNI owns those.
+        description: BGPInstance configures BGP speaker parameters on all providers
+          matching spec.providerSelector.
         properties:
           apiVersion:
             description: |-
@@ -49,17 +47,57 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPAdvertisementSpec defines the desired advertisement state.
+            description: BGPInstanceSpec defines the desired BGP speaker configuration.
             properties:
-              instanceRef:
-                description: |-
-                  InstanceRef is the name of the BGPInstance to advertise through.
-                  Must reference a BGPInstance bound to FRR providers with Unicast families.
-                type: string
-              peerSelector:
-                description: |-
-                  PeerSelector restricts advertisement to matched BGPPeer resources.
-                  If absent, advertise to all peers on matched providers.
+              addressFamilies:
+                description: AddressFamilies lists the address families for this BGP
+                  instance.
+                items:
+                  description: AddressFamily represents a BGP address family (AFI/SAFI
+                    pair).
+                  properties:
+                    afi:
+                      description: AFI is the Address Family Identifier.
+                      enum:
+                      - IPv4
+                      - IPv6
+                      type: string
+                    safi:
+                      description: SAFI is the Subsequent Address Family Identifier.
+                      enum:
+                      - Unicast
+                      - VPNUnicast
+                      type: string
+                  required:
+                  - afi
+                  - safi
+                  type: object
+                minItems: 1
+                type: array
+              asNumber:
+                description: ASNumber is the BGP autonomous system number.
+                format: int64
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              bestPath:
+                description: BestPath controls BGP best-path selection parameters.
+                properties:
+                  alwaysCompareMed:
+                    description: AlwaysCompareMed enables MED comparison across different
+                      ASes.
+                    type: boolean
+                  compareRouterId:
+                    description: CompareRouterID uses router ID as a tiebreaker in
+                      best-path selection.
+                    type: boolean
+                  deterministicMed:
+                    description: DeterministicMed enables deterministic MED comparison.
+                    type: boolean
+                type: object
+              providerSelector:
+                description: ProviderSelector selects BGPProvider resources this instance
+                  configures.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -104,22 +142,69 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              prefixes:
-                description: Prefixes is the list of IPv4 or IPv6 unicast CIDR blocks
-                  to advertise.
-                items:
-                  type: string
-                minItems: 1
-                type: array
+              routeReflector:
+                description: |-
+                  RouteReflector configures this instance as a route reflector.
+                  Only valid in infra cluster role. Rejected in POP clusters.
+                properties:
+                  clusterID:
+                    description: |-
+                      ClusterID is the route reflector cluster ID.
+                      BGP convention uses IPv4 dotted-quad format.
+                    format: ipv4
+                    type: string
+                required:
+                - clusterID
+                type: object
+              routerID:
+                description: |-
+                  RouterID is the explicit router ID. Required when routerIDSource is Manual.
+                  BGP convention uses IPv4 dotted-quad format even on IPv6-only nodes.
+                format: ipv4
+                type: string
+              routerIDSource:
+                default: Auto
+                description: |-
+                  RouterIDSource controls how the router ID is derived.
+                  Auto derives from the last 32 bits of the backing node's IPv6 InternalIP.
+                  Manual requires an explicit routerID field.
+                enum:
+                - Auto
+                - Manual
+                type: string
+              timers:
+                description: Timers contains BGP timer defaults for this instance.
+                properties:
+                  defaultHoldTime:
+                    default: 90
+                    description: DefaultHoldTime is the default hold time in seconds.
+                    format: int32
+                    minimum: 3
+                    type: integer
+                  defaultKeepalive:
+                    default: 30
+                    description: DefaultKeepalive is the default keepalive interval
+                      in seconds.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
             required:
-            - instanceRef
-            - prefixes
+            - addressFamilies
+            - asNumber
+            - providerSelector
             type: object
+            x-kubernetes-validations:
+            - message: routerID is required when routerIDSource is Manual
+              rule: self.routerIDSource != 'Manual' || has(self.routerID)
+            - message: routeReflector.clusterID is required when routeReflector is
+                set
+              rule: '!has(self.routeReflector) || has(self.routeReflector.clusterID)'
           status:
-            description: BGPAdvertisementStatus defines the observed state of BGPAdvertisement.
+            description: BGPInstanceStatus defines the observed state of BGPInstance.
             properties:
               conditions:
-                description: Conditions are top-level conditions for this BGPAdvertisement.
+                description: Conditions are top-level conditions for this BGPInstance.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
