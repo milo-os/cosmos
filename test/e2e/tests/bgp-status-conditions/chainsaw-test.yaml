@@ -1,0 +1,197 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: bgp-status-conditions
+spec:
+  description: >
+    Verify that top-level status.conditions are written on BGPPeer,
+    BGPAdvertisement, and BGPInstance when reconciliation cannot proceed.
+    Tests the set*Condition helpers introduced to give operators a
+    machine-readable reason when a resource is stuck before the provider loop.
+
+  steps:
+    - name: cleanup-stale
+      try:
+        - script:
+            content: |
+              kubectl delete bgppeer \
+                e2e-cond-peer-no-instance \
+                e2e-cond-peer-no-provider \
+                2>/dev/null || true
+              kubectl delete bgpadvertisement \
+                e2e-cond-adv-no-instance \
+                2>/dev/null || true
+              kubectl delete bgpinstance \
+                e2e-cond-instance-no-provider \
+                2>/dev/null || true
+              echo "OK: stale resources cleaned up"
+
+    - name: assert-peer-instance-not-found
+      description: >
+        A BGPPeer referencing a non-existent BGPInstance should expose an
+        InstanceNotFound condition on status.conditions within the assert timeout.
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl apply -f - <<EOF
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-cond-peer-no-instance
+              spec:
+                instanceRef: instance-does-not-exist
+                providerRef: provider-does-not-exist
+                address: "2001:db8:e2e:cond::1"
+                asNumber: 65099
+              EOF
+        - script:
+            content: |
+              set -e
+              ATTEMPTS=0
+              while [ "$ATTEMPTS" -lt 30 ]; do
+                STATUS=$(kubectl get bgppeer e2e-cond-peer-no-instance \
+                  -o jsonpath='{.status.conditions[?(@.type=="InstanceNotFound")].status}' \
+                  2>/dev/null || true)
+                if [ "$STATUS" = "True" ]; then
+                  echo "OK: InstanceNotFound condition present and True on BGPPeer"
+                  exit 0
+                fi
+                ATTEMPTS=$((ATTEMPTS+1))
+                sleep 2
+              done
+              echo "ERROR: InstanceNotFound condition not written to BGPPeer status"
+              kubectl get bgppeer e2e-cond-peer-no-instance -o yaml
+              exit 1
+
+    - name: assert-peer-provider-not-matched
+      description: >
+        A BGPPeer with a valid instanceRef but a providerRef that does not
+        exist should expose a ProviderNotMatched condition.
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl apply -f - <<EOF
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-cond-peer-no-provider
+              spec:
+                instanceRef: default
+                providerRef: provider-does-not-exist
+                address: "2001:db8:e2e:cond::2"
+                asNumber: 65099
+              EOF
+        - script:
+            content: |
+              set -e
+              ATTEMPTS=0
+              while [ "$ATTEMPTS" -lt 30 ]; do
+                STATUS=$(kubectl get bgppeer e2e-cond-peer-no-provider \
+                  -o jsonpath='{.status.conditions[?(@.type=="ProviderNotMatched")].status}' \
+                  2>/dev/null || true)
+                if [ "$STATUS" = "True" ]; then
+                  echo "OK: ProviderNotMatched condition present and True on BGPPeer"
+                  exit 0
+                fi
+                ATTEMPTS=$((ATTEMPTS+1))
+                sleep 2
+              done
+              echo "ERROR: ProviderNotMatched condition not written to BGPPeer status"
+              kubectl get bgppeer e2e-cond-peer-no-provider -o yaml
+              exit 1
+
+    - name: assert-advertisement-instance-not-found
+      description: >
+        A BGPAdvertisement referencing a non-existent BGPInstance should expose
+        an InstanceNotFound condition on status.conditions.
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl apply -f - <<EOF
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPAdvertisement
+              metadata:
+                name: e2e-cond-adv-no-instance
+              spec:
+                instanceRef: instance-does-not-exist
+                prefixes:
+                  - 2001:db8:e2e:cond::/64
+              EOF
+        - script:
+            content: |
+              set -e
+              ATTEMPTS=0
+              while [ "$ATTEMPTS" -lt 30 ]; do
+                STATUS=$(kubectl get bgpadvertisement e2e-cond-adv-no-instance \
+                  -o jsonpath='{.status.conditions[?(@.type=="InstanceNotFound")].status}' \
+                  2>/dev/null || true)
+                if [ "$STATUS" = "True" ]; then
+                  echo "OK: InstanceNotFound condition present and True on BGPAdvertisement"
+                  exit 0
+                fi
+                ATTEMPTS=$((ATTEMPTS+1))
+                sleep 2
+              done
+              echo "ERROR: InstanceNotFound condition not written to BGPAdvertisement status"
+              kubectl get bgpadvertisement e2e-cond-adv-no-instance -o yaml
+              exit 1
+
+    - name: assert-instance-provider-not-matched
+      description: >
+        A BGPInstance whose providerSelector matches no BGPProvider resources
+        should expose a ProviderNotMatched condition on status.conditions.
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl apply -f - <<EOF
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPInstance
+              metadata:
+                name: e2e-cond-instance-no-provider
+              spec:
+                providerSelector:
+                  matchLabels:
+                    bgp.miloapis.com/daemon: does-not-exist
+                asNumber: 65099
+                routerIDSource: Auto
+                addressFamilies:
+                  - afi: IPv6
+                    safi: Unicast
+              EOF
+        - script:
+            content: |
+              set -e
+              ATTEMPTS=0
+              while [ "$ATTEMPTS" -lt 30 ]; do
+                STATUS=$(kubectl get bgpinstance e2e-cond-instance-no-provider \
+                  -o jsonpath='{.status.conditions[?(@.type=="ProviderNotMatched")].status}' \
+                  2>/dev/null || true)
+                if [ "$STATUS" = "True" ]; then
+                  echo "OK: ProviderNotMatched condition present and True on BGPInstance"
+                  exit 0
+                fi
+                ATTEMPTS=$((ATTEMPTS+1))
+                sleep 2
+              done
+              echo "ERROR: ProviderNotMatched condition not written to BGPInstance status"
+              kubectl get bgpinstance e2e-cond-instance-no-provider -o yaml
+              exit 1
+
+      finally:
+        - script:
+            content: |
+              kubectl delete bgppeer \
+                e2e-cond-peer-no-instance \
+                e2e-cond-peer-no-provider \
+                2>/dev/null || true
+              kubectl delete bgpadvertisement \
+                e2e-cond-adv-no-instance \
+                2>/dev/null || true
+              kubectl delete bgpinstance \
+                e2e-cond-instance-no-provider \
+                2>/dev/null || true
+              echo "OK: cleanup complete"
