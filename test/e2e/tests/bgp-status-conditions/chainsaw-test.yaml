@@ -42,7 +42,7 @@ spec:
               spec:
                 instanceRef: instance-does-not-exist
                 providerRef: provider-does-not-exist
-                address: "2001:db8:e2e:cond::1"
+                address: "2001:db8:e2e:c001::1"
                 asNumber: 65099
               EOF
         - script:
@@ -80,7 +80,7 @@ spec:
               spec:
                 instanceRef: default
                 providerRef: provider-does-not-exist
-                address: "2001:db8:e2e:cond::2"
+                address: "2001:db8:e2e:c002::1"
                 asNumber: 65099
               EOF
         - script:

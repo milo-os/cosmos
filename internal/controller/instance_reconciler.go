@@ -84,11 +84,15 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 			"ProviderNotMatched", "no BGPProvider resources matched providerSelector")
 	}
 
+	var providerErrs []error
 	for i := range providerList.Items {
 		bp := &providerList.Items[i]
 		if err := r.reconcileForProvider(ctx, &instance, bp); err != nil {
-			return ctrl.Result{}, fmt.Errorf("provider %s: %w", bp.Name, err)
+			providerErrs = append(providerErrs, fmt.Errorf("provider %s: %w", bp.Name, err))
 		}
+	}
+	if len(providerErrs) > 0 {
+		return ctrl.Result{}, errors.Join(providerErrs...)
 	}
 	return ctrl.Result{}, nil
 }
