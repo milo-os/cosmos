@@ -2,11 +2,11 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"sort"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -82,17 +82,11 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 			"ProviderNotMatched", "no BGPProvider resources matched providerSelector")
 	}
 
-	var needsRequeue bool
 	for i := range providerList.Items {
 		bp := &providerList.Items[i]
 		if err := r.reconcileForProvider(ctx, &instance, bp); err != nil {
-			log.Printf("bgp/instance: %s provider %s: %v", instance.Name, bp.Name, err)
-			needsRequeue = true
+			return ctrl.Result{}, fmt.Errorf("provider %s: %w", bp.Name, err)
 		}
-	}
-
-	if needsRequeue {
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -282,14 +276,11 @@ func (r *InstanceReconciler) writeInstanceProviderStatus(
 	}
 
 	patch := client.MergeFrom(instance)
-	if err := r.Status().Patch(ctx, updated, patch); err != nil {
-		log.Printf("bgp/instance: patch status for provider %s: %v", providerName, err)
-	}
-
+	patchErr := r.Status().Patch(ctx, updated, patch)
 	if !configured {
-		return fmt.Errorf("%s: %s", reason, msg)
+		return errors.Join(fmt.Errorf("%s: %s", reason, msg), patchErr)
 	}
-	return nil
+	return patchErr
 }
 
 // invalidatePeersForProvider bumps a reconcile annotation on all BGPPeers that
@@ -317,17 +308,27 @@ func (r *InstanceReconciler) invalidatePeersForProvider(ctx context.Context, pro
 	}
 }
 
-// setInstanceCondition sets a top-level condition on the instance status.
+// setInstanceCondition writes a top-level status condition and returns an error
+// so the controller re-queues with backoff until the underlying issue is resolved.
 func (r *InstanceReconciler) setInstanceCondition(
 	ctx context.Context,
 	instance *bgpv1alpha1.BGPInstance,
 	condType string,
-	status metav1.ConditionStatus,
+	condStatus metav1.ConditionStatus,
 	reason, msg string,
 ) (reconcile.Result, error) {
-	log.Printf("bgp/instance: %s condition %s=%s: %s", instance.Name, condType, status, msg)
-	// For POP cluster RR rejection: no requeue (must fix spec).
-	return ctrl.Result{}, nil
+	updated := instance.DeepCopy()
+	apimeta.SetStatusCondition(&updated.Status.Conditions, metav1.Condition{
+		Type:               condType,
+		Status:             condStatus,
+		Reason:             reason,
+		Message:            msg,
+		ObservedGeneration: instance.Generation,
+	})
+	if err := r.Status().Patch(ctx, updated, client.MergeFrom(instance)); err != nil {
+		log.Printf("bgp/instance: %s patch condition %s: %v", instance.Name, reason, err)
+	}
+	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, msg)
 }
 
 // handleDelete removes provider configuration and the finalizer.

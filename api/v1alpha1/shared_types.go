@@ -2,6 +2,14 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+const (
+	AFIIPv4 = "IPv4"
+	AFIIPv6 = "IPv6"
+
+	SAFIUnicast    = "Unicast"
+	SAFIVPNUnicast = "VPNUnicast"
+)
+
 // AddressFamily represents a BGP address family (AFI/SAFI pair).
 type AddressFamily struct {
 	// AFI is the Address Family Identifier.

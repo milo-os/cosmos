@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -78,7 +77,7 @@ func (r *ExternalPeerReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	})
 
 	if err := r.Status().Patch(ctx, &ep, patch); err != nil {
-		log.Printf("bgp/externalpeer: patch status: %v", err)
+		return ctrl.Result{}, fmt.Errorf("patch status: %w", err)
 	}
 
 	return ctrl.Result{}, nil

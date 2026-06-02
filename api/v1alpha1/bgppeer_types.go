@@ -134,6 +134,13 @@ type SecretKeyRef struct {
 
 // BGPPeerStatus defines the observed state of BGPPeer.
 type BGPPeerStatus struct {
+	// Conditions are top-level conditions for this BGPPeer.
+	//
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// Providers holds per-provider reconciliation status.
 	//
 	// +listType=map

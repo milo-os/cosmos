@@ -81,7 +81,7 @@ func (r *SessionReconciler) reconcileManagement(ctx context.Context, session *bg
 		ObservedGeneration: session.Generation,
 	})
 	if err := r.Status().Patch(ctx, session, patch); err != nil {
-		log.Printf("bgp/session: patch status: %v", err)
+		return ctrl.Result{}, fmt.Errorf("patch status: %w", err)
 	}
 	return ctrl.Result{}, nil
 }
@@ -119,7 +119,7 @@ func (r *SessionReconciler) reconcilePopInfra(ctx context.Context, session *bgpv
 			ObservedGeneration: session.Generation,
 		})
 		if err := r.Status().Patch(ctx, session, patch); err != nil {
-			log.Printf("bgp/session: patch status: %v", err)
+			return ctrl.Result{}, fmt.Errorf("patch status: %w", err)
 		}
 		return ctrl.Result{}, nil
 	}
@@ -165,7 +165,7 @@ func (r *SessionReconciler) reconcilePopInfra(ctx context.Context, session *bgpv
 		PeerCount: int32(len(session.Spec.ToPeers)),
 	}
 	if err := r.Status().Patch(ctx, session, patch); err != nil {
-		log.Printf("bgp/session: patch status: %v", err)
+		return ctrl.Result{}, fmt.Errorf("patch status: %w", err)
 	}
 
 	return ctrl.Result{}, nil
@@ -182,7 +182,7 @@ func (r *SessionReconciler) reconcileExternalRef(ctx context.Context, session *b
 		ObservedGeneration: session.Generation,
 	})
 	if err := r.Status().Patch(ctx, session, patch); err != nil {
-		log.Printf("bgp/session: patch status: %v", err)
+		return ctrl.Result{}, fmt.Errorf("patch status: %w", err)
 	}
 	return ctrl.Result{}, nil
 }

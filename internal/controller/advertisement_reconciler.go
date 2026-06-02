@@ -2,9 +2,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"time"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,6 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
@@ -82,17 +83,11 @@ func (r *AdvertisementReconciler) Reconcile(ctx context.Context, req reconcile.R
 		return ctrl.Result{}, fmt.Errorf("list BGPProviders: %w", err)
 	}
 
-	var needsRequeue bool
 	for i := range providerList.Items {
 		bp := &providerList.Items[i]
 		if err := r.reconcileForProvider(ctx, &adv, bp); err != nil {
-			log.Printf("bgp/adv: %s provider %s: %v", adv.Name, bp.Name, err)
-			needsRequeue = true
+			return ctrl.Result{}, fmt.Errorf("provider %s: %w", bp.Name, err)
 		}
-	}
-
-	if needsRequeue {
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -147,7 +142,7 @@ func (r *AdvertisementReconciler) reconcileForProvider(
 // hasUnicastFamily returns true when any address family has SAFI Unicast.
 func hasUnicastFamily(afs []bgpv1alpha1.AddressFamily) bool {
 	for _, af := range afs {
-		if af.SAFI == "Unicast" {
+		if af.SAFI == bgpv1alpha1.SAFIUnicast {
 			return true
 		}
 	}
@@ -204,26 +199,34 @@ func (r *AdvertisementReconciler) writeAdvProviderStatus(
 	}
 
 	patch := client.MergeFrom(adv)
-	if err := r.Status().Patch(ctx, updated, patch); err != nil {
-		log.Printf("bgp/adv: patch status for provider %s: %v", providerName, err)
-	}
-
+	patchErr := r.Status().Patch(ctx, updated, patch)
 	if !ok {
-		return fmt.Errorf("%s: %s", reason, msg)
+		return errors.Join(fmt.Errorf("%s: %s", reason, msg), patchErr)
 	}
-	return nil
+	return patchErr
 }
 
-// setAdvCondition sets a top-level condition on the advertisement status.
+// setAdvCondition writes a top-level status condition and returns an error so
+// the controller re-queues with backoff until the underlying issue is resolved.
 func (r *AdvertisementReconciler) setAdvCondition(
 	ctx context.Context,
 	adv *bgpv1alpha1.BGPAdvertisement,
-	_ string,
-	_ metav1.ConditionStatus,
+	condType string,
+	condStatus metav1.ConditionStatus,
 	reason, msg string,
 ) (reconcile.Result, error) {
-	log.Printf("bgp/adv: %s condition %s: %s", adv.Name, reason, msg)
-	return ctrl.Result{}, nil
+	updated := adv.DeepCopy()
+	apimeta.SetStatusCondition(&updated.Status.Conditions, metav1.Condition{
+		Type:               condType,
+		Status:             condStatus,
+		Reason:             reason,
+		Message:            msg,
+		ObservedGeneration: adv.Generation,
+	})
+	if err := r.Status().Patch(ctx, updated, client.MergeFrom(adv)); err != nil {
+		log.Printf("bgp/adv: %s patch condition %s: %v", adv.Name, reason, err)
+	}
+	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, msg)
 }
 
 // handleDelete withdraws all prefixes on each provider and removes the finalizer.
@@ -252,9 +255,33 @@ func (r *AdvertisementReconciler) handleDelete(ctx context.Context, adv *bgpv1al
 	return r.Patch(ctx, adv, patch)
 }
 
+// mapInstanceToAdvertisements re-triggers reconciliation for all BGPAdvertisements
+// that reference a changed BGPInstance, so advertisements react when their instance appears.
+func (r *AdvertisementReconciler) mapInstanceToAdvertisements(ctx context.Context, obj client.Object) []reconcile.Request {
+	instance, ok := obj.(*bgpv1alpha1.BGPInstance)
+	if !ok {
+		return nil
+	}
+	var advList bgpv1alpha1.BGPAdvertisementList
+	if err := r.List(ctx, &advList); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, adv := range advList.Items {
+		if adv.Spec.InstanceRef == instance.Name {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: adv.Name}})
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers AdvertisementReconciler with controller-runtime.
 func (r *AdvertisementReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bgpv1alpha1.BGPAdvertisement{}).
+		Watches(
+			&bgpv1alpha1.BGPInstance{},
+			handler.EnqueueRequestsFromMapFunc(r.mapInstanceToAdvertisements),
+		).
 		Complete(r)
 }

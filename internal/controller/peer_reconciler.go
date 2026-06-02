@@ -2,10 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -16,6 +16,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
@@ -78,16 +79,10 @@ func (r *PeerReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 			"ProviderNotMatched", "no BGPProvider resources matched")
 	}
 
-	var needsRequeue bool
 	for _, bp := range providers {
 		if err := r.reconcileForProvider(ctx, &peer, &instance, bp); err != nil {
-			log.Printf("bgp/peer: %s provider %s: %v", peer.Name, bp.Name, err)
-			needsRequeue = true
+			return ctrl.Result{}, fmt.Errorf("provider %s: %w", bp.Name, err)
 		}
-	}
-
-	if needsRequeue {
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -321,26 +316,34 @@ func (r *PeerReconciler) writePeerProviderStatus(
 	}
 
 	patch := client.MergeFrom(peer)
-	if err := r.Status().Patch(ctx, updated, patch); err != nil {
-		log.Printf("bgp/peer: patch status for provider %s: %v", providerName, err)
-	}
-
+	patchErr := r.Status().Patch(ctx, updated, patch)
 	if !configured {
-		return fmt.Errorf("%s: %s", reason, msg)
+		return errors.Join(fmt.Errorf("%s: %s", reason, msg), patchErr)
 	}
-	return nil
+	return patchErr
 }
 
-// setPeerCondition is used for top-level conditions that don't map to a provider.
+// setPeerCondition writes a top-level status condition and returns an error so
+// the controller re-queues with backoff until the underlying issue is resolved.
 func (r *PeerReconciler) setPeerCondition(
 	ctx context.Context,
 	peer *bgpv1alpha1.BGPPeer,
-	_ string,
-	_ metav1.ConditionStatus,
+	condType string,
+	condStatus metav1.ConditionStatus,
 	reason, msg string,
 ) (reconcile.Result, error) {
-	log.Printf("bgp/peer: %s condition %s: %s", peer.Name, reason, msg)
-	return ctrl.Result{}, nil
+	updated := peer.DeepCopy()
+	apimeta.SetStatusCondition(&updated.Status.Conditions, metav1.Condition{
+		Type:               condType,
+		Status:             condStatus,
+		Reason:             reason,
+		Message:            msg,
+		ObservedGeneration: peer.Generation,
+	})
+	if err := r.Status().Patch(ctx, updated, client.MergeFrom(peer)); err != nil {
+		log.Printf("bgp/peer: %s patch condition %s: %v", peer.Name, reason, err)
+	}
+	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, msg)
 }
 
 // handleDelete calls DeletePeer on all matching providers before removing the finalizer.
@@ -399,9 +402,33 @@ func (r *PeerReconciler) handleDelete(ctx context.Context, peer *bgpv1alpha1.BGP
 	return r.Patch(ctx, peer, patch)
 }
 
+// mapInstanceToPeers re-triggers reconciliation for all BGPPeers that reference
+// a changed BGPInstance, so peers react when their instance appears or changes.
+func (r *PeerReconciler) mapInstanceToPeers(ctx context.Context, obj client.Object) []reconcile.Request {
+	instance, ok := obj.(*bgpv1alpha1.BGPInstance)
+	if !ok {
+		return nil
+	}
+	var peerList bgpv1alpha1.BGPPeerList
+	if err := r.List(ctx, &peerList); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, peer := range peerList.Items {
+		if peer.Spec.InstanceRef == instance.Name {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: peer.Name}})
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers PeerReconciler with controller-runtime.
 func (r *PeerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bgpv1alpha1.BGPPeer{}).
+		Watches(
+			&bgpv1alpha1.BGPInstance{},
+			handler.EnqueueRequestsFromMapFunc(r.mapInstanceToPeers),
+		).
 		Complete(r)
 }

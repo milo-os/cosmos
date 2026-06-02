@@ -41,6 +41,13 @@ type BGPAdvertisementSpec struct {
 
 // BGPAdvertisementStatus defines the observed state of BGPAdvertisement.
 type BGPAdvertisementStatus struct {
+	// Conditions are top-level conditions for this BGPAdvertisement.
+	//
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// Providers holds per-provider reconciliation status.
 	//
 	// +listType=map

@@ -2,10 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
-	"time"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +14,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
@@ -64,7 +65,7 @@ func (r *RoutePolicyReconciler) Reconcile(ctx context.Context, req reconcile.Req
 			return ctrl.Result{}, err
 		}
 		log.Printf("bgp/routepolicy: %s instance %s not found", pol.Name, pol.Spec.InstanceRef)
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, fmt.Errorf("BGPInstance %q not found", pol.Spec.InstanceRef)
 	}
 
 	// List providers matching the BGPInstance's providerSelector.
@@ -109,17 +110,11 @@ func (r *RoutePolicyReconciler) Reconcile(ctx context.Context, req reconcile.Req
 	sortPolicies(orderedPolicies)
 
 	// Find this policy's position in the ordered list to derive its effective policy name.
-	var needsRequeue bool
 	for i := range providerList.Items {
 		bp := &providerList.Items[i]
 		if err := r.reconcileForProvider(ctx, &pol, bp, orderedPolicies, matchedPeers); err != nil {
-			log.Printf("bgp/routepolicy: %s provider %s: %v", pol.Name, bp.Name, err)
-			needsRequeue = true
+			return ctrl.Result{}, fmt.Errorf("provider %s: %w", bp.Name, err)
 		}
-	}
-
-	if needsRequeue {
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -269,14 +264,11 @@ func (r *RoutePolicyReconciler) writePolicyProviderStatus(
 	}
 
 	patch := client.MergeFrom(pol)
-	if err := r.Status().Patch(ctx, updated, patch); err != nil {
-		log.Printf("bgp/routepolicy: patch status for provider %s: %v", providerName, err)
-	}
-
+	patchErr := r.Status().Patch(ctx, updated, patch)
 	if !applied {
-		return fmt.Errorf("%s: %s", reason, msg)
+		return errors.Join(fmt.Errorf("%s: %s", reason, msg), patchErr)
 	}
-	return nil
+	return patchErr
 }
 
 // handleDelete removes policies from all providers and removes the finalizer.
@@ -308,9 +300,33 @@ func (r *RoutePolicyReconciler) handleDelete(ctx context.Context, pol *bgpv1alph
 	return r.Patch(ctx, pol, patch)
 }
 
+// mapInstanceToPolicies re-triggers reconciliation for all BGPRoutePolicies that
+// reference a changed BGPInstance, so policies react when their instance appears.
+func (r *RoutePolicyReconciler) mapInstanceToPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
+	instance, ok := obj.(*bgpv1alpha1.BGPInstance)
+	if !ok {
+		return nil
+	}
+	var polList bgpv1alpha1.BGPRoutePolicyList
+	if err := r.List(ctx, &polList); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, pol := range polList.Items {
+		if pol.Spec.InstanceRef == instance.Name {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: pol.Name}})
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers RoutePolicyReconciler with controller-runtime.
 func (r *RoutePolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bgpv1alpha1.BGPRoutePolicy{}).
+		Watches(
+			&bgpv1alpha1.BGPInstance{},
+			handler.EnqueueRequestsFromMapFunc(r.mapInstanceToPolicies),
+		).
 		Complete(r)
 }
