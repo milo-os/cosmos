@@ -7,7 +7,7 @@ resources:
 
 # Override image tags for local e2e builds
 images:
-  - name: ghcr.io/milo-os/bgp
+  - name: ghcr.io/milo-os/cosmos
     newTag: e2e-local
   - name: gobgpd
     newName: gobgpd
