@@ -99,11 +99,16 @@ tasks:
   ## Testing
   ##
 
+  ci:
+    desc: Run the full CI pipeline locally (build, vet, unit tests, and e2e)
+    cmds:
+      - scripts/ci.sh build
+      - scripts/ci.sh e2e
+
   test-e2e:
     desc: Run the full E2E suite (create cluster, deploy, test, teardown)
-    dir: test/e2e
     cmds:
-      - task default
+      - scripts/ci.sh e2e
 
   ##
   ## Cleanup
