@@ -67,7 +67,7 @@ tasks:
       - docker build -t {{.BGP_IMG}} -f build/Dockerfile .
 
   images-build-gobgpd:
-    desc: Build the gobgpd sidecar image
+    desc: Build the gobgpd daemon image
     cmds:
       - |
         docker build --output type=docker -t {{.GOBGPD_IMG}} - <<'DOCKERFILE'
@@ -93,6 +93,7 @@ tasks:
       - task: deploy-cilium
       - task: deploy-crds
       - task: deploy-bgp-operator
+      - task: deploy-bgp-providers
       - task: deploy-bgp-instance
 
   deploy-cilium:
@@ -132,15 +133,23 @@ tasks:
           --timeout=60s
 
   deploy-bgp-operator:
-    desc: Deploy BGP operator DaemonSet with gobgpd sidecar
+    desc: Deploy BGP operator and gobgpd DaemonSets
     cmds:
-      # Apply the deploy kustomization (namespace, RBAC, ConfigMap, DaemonSet)
-      # using an overlay that sets the e2e-local image tags and LOCAL_ENDPOINT.
+      # Apply the overlay (namespace, RBAC, cosmos DaemonSet, gobgpd DaemonSet).
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.TASKFILE_DIR}}/overlay
       - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system wait
           --for=condition=Ready
           pod -l app.kubernetes.io/name=bgp
           --timeout=120s
+      - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system wait
+          --for=condition=Ready
+          pod -l app.kubernetes.io/name=gobgpd
+          --timeout=120s
+
+  deploy-bgp-providers:
+    desc: Apply BGPProvider manifests for each e2e worker node
+    cmds:
+      - KUBECONFIG={{.KUBECONFIG}} kubectl apply -f {{.TASKFILE_DIR}}/fixtures/bgpproviders.yaml
 
   deploy-bgp-instance:
     desc: Apply the default BGPInstance

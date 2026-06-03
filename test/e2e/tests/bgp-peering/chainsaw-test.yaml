@@ -48,16 +48,17 @@ spec:
               while [ "$COUNT" -lt 3 ] && [ "$ATTEMPTS" -lt 30 ]; do
                 COUNT=$(kubectl get bgpproviders \
                   -l bgp.miloapis.com/daemon=GoBGP \
-                  --no-headers 2>/dev/null | wc -l)
+                  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+                  2>/dev/null | grep -c "^True$" || true)
                 ATTEMPTS=$((ATTEMPTS+1))
                 [ "$COUNT" -lt 3 ] && sleep 2
               done
               if [ "$COUNT" -lt 3 ]; then
-                echo "ERROR: only $COUNT/3 GoBGP BGPProviders ready after ${ATTEMPTS} attempts"
+                echo "ERROR: only $COUNT/3 GoBGP BGPProviders are Ready after ${ATTEMPTS} attempts"
                 kubectl get bgpproviders -o wide || true
                 exit 1
               fi
-              echo "OK: $COUNT GoBGP BGPProviders ready"
+              echo "OK: $COUNT GoBGP BGPProviders Ready"
 
     - name: create-bgp-sessions
       try:
@@ -218,15 +219,15 @@ spec:
               while [ "$ALL_OK" -eq 0 ] && [ "$ATTEMPTS" -lt 60 ]; do
                 ALL_OK=1
                 for WORKER in bgp-e2e-worker bgp-e2e-worker2 bgp-e2e-worker3; do
-                  POD=$(kubectl -n bgp-system get pod \
-                    -l app.kubernetes.io/name=bgp \
+                  GPOD=$(kubectl -n bgp-system get pod \
+                    -l app.kubernetes.io/name=gobgpd \
                     --field-selector "spec.nodeName=${WORKER}" \
                     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-                  if [ -z "$POD" ]; then
+                  if [ -z "$GPOD" ]; then
                     ALL_OK=0
                     break
                   fi
-                  ESTABLISHED=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                  ESTABLISHED=$(kubectl -n bgp-system exec "$GPOD" -- \
                     gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
                   if [ "$ESTABLISHED" -lt 2 ]; then
                     ALL_OK=0
@@ -239,12 +240,12 @@ spec:
               if [ "$ALL_OK" -eq 0 ]; then
                 echo "ERROR: not all workers have 2+ established GoBGP sessions"
                 for WORKER in bgp-e2e-worker bgp-e2e-worker2 bgp-e2e-worker3; do
-                  POD=$(kubectl -n bgp-system get pod \
-                    -l app.kubernetes.io/name=bgp \
+                  GPOD=$(kubectl -n bgp-system get pod \
+                    -l app.kubernetes.io/name=gobgpd \
                     --field-selector "spec.nodeName=${WORKER}" \
                     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-                  echo "--- $WORKER ($POD) ---"
-                  [ -n "$POD" ] && kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                  echo "--- $WORKER ($GPOD) ---"
+                  [ -n "$GPOD" ] && kubectl -n bgp-system exec "$GPOD" -- \
                     gobgp neighbor 2>/dev/null || true
                 done
                 exit 1

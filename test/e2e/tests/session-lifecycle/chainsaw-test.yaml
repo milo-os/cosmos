@@ -95,23 +95,23 @@ spec:
         - script:
             content: |
               set -e
-              POD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=bgp \
+              GPOD=$(kubectl -n bgp-system get pod \
+                -l app.kubernetes.io/name=gobgpd \
                 --field-selector spec.nodeName=bgp-e2e-worker2 \
                 -o jsonpath='{.items[0].metadata.name}')
-              echo "Waiting for GoBGP session in pod: $POD"
+              echo "Waiting for GoBGP session in pod: $GPOD"
 
               ATTEMPTS=0
               ESTABLISHED=0
               while [ "$ESTABLISHED" -lt 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
-                ESTABLISHED=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                ESTABLISHED=$(kubectl -n bgp-system exec "$GPOD" -- \
                   gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
                 ATTEMPTS=$((ATTEMPTS+1))
                 [ "$ESTABLISHED" -lt 1 ] && sleep 5
               done
               if [ "$ESTABLISHED" -lt 1 ]; then
                 echo "ERROR: no BGP session reached Established on bgp-e2e-worker2"
-                kubectl -n bgp-system exec "$POD" -c gobgpd -- gobgp neighbor || true
+                kubectl -n bgp-system exec "$GPOD" -- gobgp neighbor || true
                 exit 1
               fi
               echo "OK: BGP session Established"
@@ -125,12 +125,12 @@ spec:
               W3=$(kubectl get node bgp-e2e-worker3 \
                 -o jsonpath='{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
                 | grep ':' | head -1)
-              POD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=bgp \
+              GPOD=$(kubectl -n bgp-system get pod \
+                -l app.kubernetes.io/name=gobgpd \
                 --field-selector spec.nodeName=bgp-e2e-worker2 \
                 -o jsonpath='{.items[0].metadata.name}')
-              echo "Checking GoBGP peer $W3 in pod $POD (on bgp-e2e-worker2)"
-              kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+              echo "Checking GoBGP peer $W3 in pod $GPOD (on bgp-e2e-worker2)"
+              kubectl -n bgp-system exec "$GPOD" -- \
                 gobgp neighbor | grep -q "${W3}"
               echo "OK: peer $W3 present in GoBGP"
 

@@ -45,7 +45,7 @@ type Manager struct {
 	// implementations here. ProviderReconciler populates it at runtime.
 	Registry *provider.Registry
 	// NodeName is the Kubernetes node name for this pod. Used by ProviderReconciler
-	// to bootstrap local BGPProvider resources.
+	// to scope reconciliation to BGPProvider resources on this node.
 	NodeName    string
 	MetricsAddr string
 	HealthAddr  string
@@ -67,10 +67,6 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 		if err := providerReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("setup ProviderReconciler: %w", err)
 		}
-
-		// Bootstrap local providers as a startup hook. The manager has not started
-		// yet so we schedule this via a Runnable that runs on Start.
-		mgr.Add(&bootstrapRunnable{reconciler: providerReconciler})
 	}
 
 	// InstanceReconciler: active in pop and infra.
@@ -191,16 +187,3 @@ func Run(ctx context.Context, metricsAddr, healthAddr, clusterRole, nodeName str
 	return mgr.Start(ctx)
 }
 
-// bootstrapRunnable is a ctrl.Runnable that bootstraps local BGPProvider resources
-// once the manager cache is synced.
-type bootstrapRunnable struct {
-	reconciler *ProviderReconciler
-}
-
-func (b *bootstrapRunnable) Start(ctx context.Context) error {
-	if err := b.reconciler.bootstrapLocalProviders(ctx); err != nil {
-		log.Printf("bgp/controller: bootstrap local providers: %v", err)
-	}
-	// Return nil — bootstrap failure is non-fatal; the normal reconcile loop will retry.
-	return nil
-}

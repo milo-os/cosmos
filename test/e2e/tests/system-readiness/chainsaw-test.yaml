@@ -17,21 +17,35 @@ spec:
               status:
                 (numberReady == desiredNumberScheduled): true
 
-    - name: bgp-pods-two-containers
+    - name: bgp-pods-ready
       try:
-        # Each pod runs bgp + gobgpd — verify at least one pod has both containers ready.
         - script:
             content: |
               set -e
               READY=$(kubectl -n bgp-system get pods \
                 -l app.kubernetes.io/name=bgp \
-                -o jsonpath='{range .items[*]}{.status.containerStatuses[*].ready}{"\n"}{end}' \
-                | grep -c "true true" || true)
+                -o jsonpath='{range .items[*]}{.status.containerStatuses[0].ready}{"\n"}{end}' \
+                | grep -c "^true$" || true)
               if [ "$READY" -eq 0 ]; then
-                echo "ERROR: no bgp pods found with both containers ready (bgp + gobgpd)"
+                echo "ERROR: no bgp pods found with the bgp container ready"
                 exit 1
               fi
-              echo "OK: $READY pod(s) with both containers ready"
+              echo "OK: $READY bgp pod(s) ready"
+
+    - name: gobgpd-pods-ready
+      try:
+        - script:
+            content: |
+              set -e
+              READY=$(kubectl -n bgp-system get pods \
+                -l app.kubernetes.io/name=gobgpd \
+                -o jsonpath='{range .items[*]}{.status.containerStatuses[0].ready}{"\n"}{end}' \
+                | grep -c "^true$" || true)
+              if [ "$READY" -eq 0 ]; then
+                echo "ERROR: no gobgpd pods found ready"
+                exit 1
+              fi
+              echo "OK: $READY gobgpd pod(s) ready"
 
     - name: crds-established
       try:
@@ -108,10 +122,10 @@ spec:
               status:
                 (conditions[?type=='Established'].status | [0]): "True"
 
-    - name: bgp-providers-bootstrapped
+    - name: bgp-providers-ready
       try:
-        # ProviderReconciler auto-bootstraps one BGPProvider per node at startup.
-        # Expect one GoBGP provider per worker node (3 workers in the e2e cluster).
+        # One BGPProvider per worker node is applied by the deploy step.
+        # Wait for all 3 to report Ready=True (daemon health probe passed).
         - script:
             content: |
               set -e
@@ -120,13 +134,14 @@ spec:
               while [ "$COUNT" -lt 3 ] && [ "$ATTEMPTS" -lt 30 ]; do
                 COUNT=$(kubectl get bgpproviders \
                   -l bgp.miloapis.com/daemon=GoBGP \
-                  --no-headers 2>/dev/null | wc -l)
+                  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+                  2>/dev/null | grep -c "^True$" || true)
                 ATTEMPTS=$((ATTEMPTS+1))
                 [ "$COUNT" -lt 3 ] && sleep 2
               done
               if [ "$COUNT" -lt 3 ]; then
-                echo "ERROR: only $COUNT/3 GoBGP BGPProviders bootstrapped after ${ATTEMPTS} attempts"
+                echo "ERROR: only $COUNT/3 GoBGP BGPProviders are Ready after ${ATTEMPTS} attempts"
                 kubectl get bgpproviders -o wide || true
                 exit 1
               fi
-              echo "OK: $COUNT GoBGP BGPProviders bootstrapped"
+              echo "OK: $COUNT GoBGP BGPProviders Ready"
