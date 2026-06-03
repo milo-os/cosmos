@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +34,24 @@ type AdvertisementReconciler struct {
 	NodeName string // from NODE_NAME env var
 }
 
+// nodeFinalizer returns the finalizer name for this controller instance.
+// When running as a DaemonSet (NodeName set), each pod uses a node-scoped
+// finalizer so every pod can independently clean up its own GoBGP providers
+// before the object is fully deleted. Falls back to the shared Finalizer in
+// dev/test mode (NodeName empty).
+func (r *AdvertisementReconciler) nodeFinalizer() string {
+	if r.NodeName == "" {
+		return Finalizer
+	}
+	// Sanitize: lowercase, replace '.' with '-', cap at 55 chars to stay within
+	// the 63-char DNS label limit after "cleanup-" prefix (8 chars).
+	name := strings.ToLower(strings.ReplaceAll(r.NodeName, ".", "-"))
+	if len(name) > 55 {
+		name = name[:55]
+	}
+	return "cosmos.bgp.miloapis.com/cleanup-" + name
+}
+
 // Reconcile handles BGPAdvertisement events.
 func (r *AdvertisementReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var adv bgpv1alpha1.BGPAdvertisement
@@ -46,9 +65,10 @@ func (r *AdvertisementReconciler) Reconcile(ctx context.Context, req reconcile.R
 	}
 
 	// Ensure finalizer.
-	if !controllerutil.ContainsFinalizer(&adv, Finalizer) {
+	fin := r.nodeFinalizer()
+	if !controllerutil.ContainsFinalizer(&adv, fin) {
 		patch := client.MergeFrom(adv.DeepCopy())
-		controllerutil.AddFinalizer(&adv, Finalizer)
+		controllerutil.AddFinalizer(&adv, fin)
 		if err := r.Patch(ctx, &adv, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
 		}
@@ -230,21 +250,21 @@ func (r *AdvertisementReconciler) setAdvCondition(
 	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, msg)
 }
 
-// handleDelete withdraws all prefixes on each provider and removes the finalizer.
+// handleDelete withdraws all prefixes on each local provider and removes this
+// pod's node-scoped finalizer. Each DaemonSet pod independently cleans up its
+// own GoBGP providers; the BGPAdvertisement object is not fully deleted until
+// every node's finalizer has been removed.
 func (r *AdvertisementReconciler) handleDelete(ctx context.Context, adv *bgpv1alpha1.BGPAdvertisement) error {
-	if !controllerutil.ContainsFinalizer(adv, Finalizer) {
+	fin := r.nodeFinalizer()
+	if !controllerutil.ContainsFinalizer(adv, fin) {
 		return nil
 	}
 
-	// Best-effort: withdraw from all known providers.
-	for _, ps := range adv.Status.Providers {
-		impl, ok := r.Registry.Get(ps.ProviderName)
-		if !ok {
-			continue
-		}
+	// Withdraw from all providers in this pod's local registry.
+	for name, impl := range r.Registry.List() {
 		for _, prefix := range adv.Spec.Prefixes {
 			if err := impl.DeleteAdvertisement(ctx, prefix); err != nil {
-				log.Printf("bgp/adv: delete prefix %s on provider %s: %v", prefix, ps.ProviderName, err)
+				log.Printf("bgp/adv: delete prefix %s on provider %s: %v", prefix, name, err)
 			}
 		}
 	}
@@ -252,7 +272,7 @@ func (r *AdvertisementReconciler) handleDelete(ctx context.Context, adv *bgpv1al
 	RecordAdvertisedPrefixes(adv.Name, 0)
 
 	patch := client.MergeFrom(adv.DeepCopy())
-	controllerutil.RemoveFinalizer(adv, Finalizer)
+	controllerutil.RemoveFinalizer(adv, fin)
 	return r.Patch(ctx, adv, patch)
 }
 

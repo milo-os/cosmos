@@ -13,6 +13,10 @@ vars:
   GOLANGCI_LINT_VERSION: v2.1.6
   CONTROLLER_GEN_VERSION: v0.18.0
   CHAINSAW_VERSION: v0.2.12
+  IMAGE_REGISTRY: ghcr.io/milo-os
+  IMAGE_NAME: cosmos
+  IMAGE_TAG:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
 
 tasks:
   default:
@@ -63,6 +67,17 @@ tasks:
     deps: [fmt, vet]
     cmds:
       - go build ./...
+
+  image:
+    desc: Build the operator container image
+    cmds:
+      - docker build -f build/Dockerfile -t {{.IMAGE_REGISTRY}}/{{.IMAGE_NAME}}:{{.IMAGE_TAG}} .
+
+  image-push:
+    desc: Push the operator container image to the registry
+    deps: [image]
+    cmds:
+      - docker push {{.IMAGE_REGISTRY}}/{{.IMAGE_NAME}}:{{.IMAGE_TAG}}
 
   ##
   ## Code generation
