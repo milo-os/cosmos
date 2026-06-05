@@ -6,6 +6,5 @@ resources:
   - namespace.yaml
   - serviceaccount.yaml
   - clusterrole.yaml
-  - gobgp-config.yaml
   - daemonset.yaml
   - ../crd

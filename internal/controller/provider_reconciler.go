@@ -8,12 +8,10 @@ import (
 	"net"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -37,8 +35,6 @@ const (
 	LabelDaemon = "bgp.miloapis.com/daemon"
 	// LabelNode records the Kubernetes node name a provider runs on.
 	LabelNode = "bgp.miloapis.com/node"
-	// LabelManagedByBootstrap indicates the resource was created at controller bootstrap.
-	LabelManagedByBootstrap = "cosmos-bootstrap"
 	// LabelManagedByManagement indicates the resource was created by the management cluster controller.
 	LabelManagedByManagement = "cosmos-management"
 
@@ -97,12 +93,6 @@ func (r *ProviderReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 	if err != nil {
 		return r.setProviderCondition(ctx, &bgpProvider, "Ready", metav1.ConditionFalse, "InvalidEndpoint",
 			fmt.Sprintf("spec has no endpoint configured: %v", err))
-	}
-
-	// v1alpha1 restriction: only loopback endpoints allowed.
-	if !isLoopback(endpoint) {
-		return r.setProviderCondition(ctx, &bgpProvider, "Ready", metav1.ConditionFalse, "RemoteProviderNotSupported",
-			fmt.Sprintf("endpoint %q is not a loopback address; remote providers are not supported in v1alpha1", endpoint))
 	}
 
 	// Validate endpoint is well-formed (host:port).
@@ -243,7 +233,7 @@ func (r *ProviderReconciler) setProviderCondition(
 		log.Printf("bgp/provider: patch status: %v", err)
 	}
 	// Hard validation errors do not requeue — the spec must be fixed.
-	if reason == "InvalidEndpoint" || reason == "RemoteProviderNotSupported" {
+	if reason == "InvalidEndpoint" {
 		return ctrl.Result{}, nil
 	}
 	return ctrl.Result{RequeueAfter: providerHealthRequeue}, nil
@@ -261,76 +251,6 @@ func (r *ProviderReconciler) newProviderImpl(bgpProvider *providersv1alpha1.BGPP
 	}
 }
 
-// bootstrapLocalProviders creates BGPProvider resources for FRR and GoBGP on the
-// local node if they do not exist. Called once at controller startup by the Manager.
-func (r *ProviderReconciler) bootstrapLocalProviders(ctx context.Context) error {
-	if r.NodeName == "" {
-		log.Printf("bgp/provider: NODE_NAME not set — skipping bootstrap")
-		return nil
-	}
-
-	// Fetch the Kubernetes Node to copy its labels.
-	var node corev1.Node
-	if err := r.Get(ctx, types.NamespacedName{Name: r.NodeName}, &node); err != nil {
-		return fmt.Errorf("get node %s: %w", r.NodeName, err)
-	}
-
-	daemons := []struct {
-		suffix   string
-		specType string
-		endpoint string
-	}{
-		{"frr", "FRR", "localhost:50051"},
-		{"gobgp", "GoBGP", "localhost:50051"},
-	}
-
-	for _, d := range daemons {
-		name := r.NodeName + "-" + d.suffix
-		var existing providersv1alpha1.BGPProvider
-		if err := r.Get(ctx, types.NamespacedName{Name: name}, &existing); err == nil {
-			continue // already exists
-		}
-
-		labels := make(map[string]string)
-		for k, v := range node.Labels {
-			labels[k] = v
-		}
-		labels[LabelManagedBy] = LabelManagedByBootstrap
-		labels[LabelDaemon] = d.specType
-		labels[LabelNode] = r.NodeName
-
-		bp := &providersv1alpha1.BGPProvider{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   name,
-				Labels: labels,
-				Annotations: map[string]string{
-					LabelNode: r.NodeName,
-				},
-			},
-			Spec: buildProviderSpec(d.specType, d.endpoint),
-		}
-
-		if err := r.Create(ctx, bp); err != nil {
-			log.Printf("bgp/provider: bootstrap %s: %v", name, err)
-		} else {
-			log.Printf("bgp/provider: bootstrapped %s (type=%s endpoint=%s)", name, d.specType, d.endpoint)
-		}
-	}
-	return nil
-}
-
-// buildProviderSpec constructs a BGPProviderSpec for the given daemon type.
-func buildProviderSpec(daemonType, endpoint string) providersv1alpha1.BGPProviderSpec {
-	spec := providersv1alpha1.BGPProviderSpec{Type: daemonType}
-	switch daemonType {
-	case "FRR":
-		spec.FRR = &providersv1alpha1.FRRProviderConfig{Endpoint: endpoint}
-	case "GoBGP":
-		spec.GoBGP = &providersv1alpha1.GoBGPProviderConfig{Endpoint: endpoint}
-	}
-	return spec
-}
-
 // endpointFromSpec extracts the configured endpoint from a BGPProvider spec.
 func endpointFromSpec(bgpProvider *providersv1alpha1.BGPProvider) (string, error) {
 	switch bgpProvider.Spec.Type {
@@ -344,20 +264,6 @@ func endpointFromSpec(bgpProvider *providersv1alpha1.BGPProvider) (string, error
 		}
 	}
 	return "", fmt.Errorf("no endpoint configured for type %q", bgpProvider.Spec.Type)
-}
-
-// isLoopback returns true when endpoint is a loopback address or "localhost".
-func isLoopback(endpoint string) bool {
-	host, _, err := net.SplitHostPort(endpoint)
-	if err != nil {
-		// Try treating the whole string as a host.
-		host = endpoint
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return host == "localhost"
-	}
-	return ip.IsLoopback()
 }
 
 // labelsForProvider returns the labels of a BGPProvider as a labels.Set for selector matching.

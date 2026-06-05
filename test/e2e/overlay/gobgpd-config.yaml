@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: gobgp-config
+  name: gobgpd-config
   namespace: bgp-system
 data:
   gobgp.conf: |

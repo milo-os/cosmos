@@ -21,26 +21,6 @@ spec:
                   - key: node-role.kubernetes.io/control-plane
                     operator: DoesNotExist
       hostNetwork: true
-      initContainers:
-        - name: config-gen
-          image: busybox:1.36
-          command:
-            - /bin/sh
-            - -c
-            - |
-              NODE_IP=$(ip -6 addr show scope global | awk '/inet6/{print $2}' | cut -d/ -f1 | head -1)
-              if [ -z "$NODE_IP" ]; then
-                echo "ERROR: no global-scope IPv6 address found"
-                exit 1
-              fi
-              echo "Generating gobgp.conf with router-id=$NODE_IP"
-              sed "s/NODE_IP_PLACEHOLDER/$NODE_IP/g" /config-template/gobgp.conf > /config/gobgp.conf
-              cat /config/gobgp.conf
-          volumeMounts:
-            - name: config-template
-              mountPath: /config-template
-            - name: config
-              mountPath: /config
       containers:
         - name: bgp
           image: ghcr.io/milo-os/cosmos:latest
@@ -76,25 +56,5 @@ spec:
               port: 8087
             initialDelaySeconds: 5
             periodSeconds: 10
-        - name: gobgpd
-          image: gobgpd:latest
-          imagePullPolicy: IfNotPresent
-          args: ["-f", "/config/gobgp.conf", "--log-level=debug", "-p"]
-          ports:
-            - containerPort: 1790
-              protocol: TCP
-              name: bgp
-            - containerPort: 50051
-              protocol: TCP
-              name: grpc
-          volumeMounts:
-            - name: config
-              mountPath: /config
-      volumes:
-        - name: config-template
-          configMap:
-            name: gobgp-config
-        - name: config
-          emptyDir: {}
       tolerations:
         - operator: Exists

@@ -82,23 +82,23 @@ spec:
         - script:
             content: |
               set -e
-              POD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=bgp \
+              GPOD=$(kubectl -n bgp-system get pod \
+                -l app.kubernetes.io/name=gobgpd \
                 --field-selector spec.nodeName=bgp-e2e-worker \
                 -o jsonpath='{.items[0].metadata.name}')
-              echo "Waiting for GoBGP session in pod: $POD"
+              echo "Waiting for GoBGP session in pod: $GPOD"
 
               ATTEMPTS=0
               ESTABLISHED=0
               while [ "$ESTABLISHED" -lt 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
-                ESTABLISHED=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                ESTABLISHED=$(kubectl -n bgp-system exec "$GPOD" -- \
                   gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
                 ATTEMPTS=$((ATTEMPTS+1))
                 [ "$ESTABLISHED" -lt 1 ] && sleep 5
               done
               if [ "$ESTABLISHED" -lt 1 ]; then
                 echo "ERROR: no BGP sessions reached Established"
-                kubectl -n bgp-system exec "$POD" -c gobgpd -- gobgp neighbor || true
+                kubectl -n bgp-system exec "$GPOD" -- gobgp neighbor || true
                 exit 1
               fi
               echo "OK: BGP session Established"
@@ -144,16 +144,15 @@ spec:
         - script:
             content: |
               set -e
-              # Get any bgp pod name to exec into gobgpd
-              POD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=bgp \
+              GPOD=$(kubectl -n bgp-system get pod \
+                -l app.kubernetes.io/name=gobgpd \
                 -o jsonpath='{.items[0].metadata.name}')
-              echo "Checking GoBGP RIB in pod: $POD"
+              echo "Checking GoBGP RIB in pod: $GPOD"
 
               ATTEMPTS=0
               FOUND=0
               while [ "$FOUND" -eq 0 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                OUTPUT=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                OUTPUT=$(kubectl -n bgp-system exec "$GPOD" -- \
                   gobgp global rib -a ipv6 2>/dev/null || true)
                 echo "$OUTPUT" | grep -q "2001:db8:e2e::" && FOUND=1 || true
                 ATTEMPTS=$((ATTEMPTS+1))
@@ -162,7 +161,7 @@ spec:
 
               if [ "$FOUND" -eq 0 ]; then
                 echo "ERROR: prefix 2001:db8:e2e::/48 not found in GoBGP RIB"
-                kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                kubectl -n bgp-system exec "$GPOD" -- \
                   gobgp global rib -a ipv6 || true
                 exit 1
               fi
@@ -178,15 +177,15 @@ spec:
         - script:
             content: |
               set -e
-              POD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=bgp \
+              GPOD=$(kubectl -n bgp-system get pod \
+                -l app.kubernetes.io/name=gobgpd \
                 -o jsonpath='{.items[0].metadata.name}')
-              echo "Verifying prefix withdrawn from GoBGP RIB in pod: $POD"
+              echo "Verifying prefix withdrawn from GoBGP RIB in pod: $GPOD"
 
               ATTEMPTS=0
               STILL_PRESENT=1
               while [ "$STILL_PRESENT" -eq 1 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                OUTPUT=$(kubectl -n bgp-system exec "$POD" -c gobgpd -- \
+                OUTPUT=$(kubectl -n bgp-system exec "$GPOD" -- \
                   gobgp global rib -a ipv6 2>/dev/null || true)
                 echo "$OUTPUT" | grep -q "2001:db8:e2e::" && STILL_PRESENT=1 || STILL_PRESENT=0
                 ATTEMPTS=$((ATTEMPTS+1))
