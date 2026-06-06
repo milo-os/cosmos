@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
-	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/bgp/api/bgp/v1alpha1"
 )
 
 // SessionReconciler reconciles BGPSession resources.
