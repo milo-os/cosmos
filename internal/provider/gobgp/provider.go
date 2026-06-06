@@ -28,7 +28,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	grpcstatus "google.golang.org/grpc/status"
 
-	"go.miloapis.com/bgp/internal/provider"
+	"go.miloapis.com/cosmos/internal/provider"
 )
 
 // GoBGPCapabilities are the compile-time capabilities of the GoBGP provider.

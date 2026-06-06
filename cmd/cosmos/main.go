@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	bgpcontroller "go.miloapis.com/bgp/internal/controller"
+	bgpcontroller "go.miloapis.com/cosmos/internal/controller"
 )
 
 func main() {
@@ -50,9 +50,9 @@ func newRootCommand() *cobra.Command {
 	opts := &options{}
 
 	cmd := &cobra.Command{
-		Use:   "bgp",
-		Short: "BGP operator — reconciles BGP CRDs against local BGP daemons",
-		Long: `The BGP operator reconciles BGP CRDs against independently-running BGP daemons.
+		Use:   "cosmos",
+		Short: "Cosmos operator — reconciles network CRDs against local BGP daemons",
+		Long: `Cosmos reconciles network CRDs against independently-running BGP daemons.
 It reads its cluster role from the cosmos-config ConfigMap in cosmos-system and
 reconciles BGPProvider, BGPInstance, BGPPeer, BGPAdvertisement, BGPRoutePolicy,
 BGPSession, and BGPExternalPeer CRDs. BGPProvider resources specify the gRPC
@@ -84,7 +84,7 @@ func run(ctx context.Context, opts *options) error {
 	// Read NODE_NAME from Downward API environment variable.
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
-		log.Printf("bgp: NODE_NAME not set — provider auto-bootstrap disabled")
+		log.Printf("cosmos: NODE_NAME not set — provider auto-bootstrap disabled")
 	}
 
 	// Resolve clusterRole: use the flag value directly when set; otherwise read from
@@ -100,7 +100,7 @@ func run(ctx context.Context, opts *options) error {
 		return fmt.Errorf("invalid --cluster-role %q: must be one of pop, infra, management", clusterRole)
 	}
 
-	log.Printf("bgp: starting (clusterRole=%s node=%s)", clusterRole, nodeName)
+	log.Printf("cosmos: starting (clusterRole=%s node=%s)", clusterRole, nodeName)
 
 	return bgpcontroller.Run(ctx, opts.metricsAddr, opts.healthAddr, clusterRole, nodeName)
 }

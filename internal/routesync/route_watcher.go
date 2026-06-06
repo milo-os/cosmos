@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	bgpnetlink "go.miloapis.com/bgp/internal/netlink"
+	bgpnetlink "go.miloapis.com/cosmos/internal/netlink"
 )
 
 const routeWatchRetryInterval = 2 * time.Second

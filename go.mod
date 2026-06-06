@@ -1,4 +1,4 @@
-module go.miloapis.com/bgp
+module go.miloapis.com/cosmos
 
 go 1.26
 
