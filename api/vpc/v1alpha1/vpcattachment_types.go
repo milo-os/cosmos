@@ -32,7 +32,6 @@ type VPCAttachmentSpec struct {
 	// Interface defines the network interface configuration.
 	// +required
 	Interface VPCAttachmentInterface `json:"interface"`
-
 }
 
 // VPCAttachmentInterface defines the network interface details.

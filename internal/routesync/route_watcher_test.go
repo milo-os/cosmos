@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"github.com/osrg/gobgp/v4/pkg/apiutil"
+	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 
 	gobgpapi "github.com/osrg/gobgp/v4/api"
 )

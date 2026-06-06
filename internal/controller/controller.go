@@ -15,8 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
 	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
 	"go.miloapis.com/bgp/internal/provider"
 )
 
@@ -186,4 +186,3 @@ func Run(ctx context.Context, metricsAddr, healthAddr, clusterRole, nodeName str
 	log.Printf("bgp/controller: starting manager (clusterRole=%s node=%s)", clusterRole, nodeName)
 	return mgr.Start(ctx)
 }
-
