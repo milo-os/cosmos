@@ -7,8 +7,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
 	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
 	"go.miloapis.com/bgp/internal/provider"
 )
 
@@ -21,35 +21,31 @@ func (s *stubProvider) ConfigureSpeaker(_ context.Context, spec provider.Speaker
 	s.lastSpec = spec
 	return false, nil
 }
-func (s *stubProvider) AddOrUpdatePeer(_ context.Context, _ provider.PeerSpec) error      { return nil }
-func (s *stubProvider) DeletePeer(_ context.Context, _ string) error                       { return nil }
+func (s *stubProvider) AddOrUpdatePeer(_ context.Context, _ provider.PeerSpec) error { return nil }
+func (s *stubProvider) DeletePeer(_ context.Context, _ string) error                 { return nil }
 func (s *stubProvider) AddOrUpdateAdvertisement(_ context.Context, _ provider.AdvertisementSpec) error {
 	return nil
 }
-func (s *stubProvider) DeleteAdvertisement(_ context.Context, _ string) error { return nil }
-func (s *stubProvider) AddOrUpdatePolicy(_ context.Context, _ provider.PolicySpec) error  { return nil }
-func (s *stubProvider) DeletePolicy(_ context.Context, _ string) error                    { return nil }
-func (s *stubProvider) Ready(_ context.Context) error                                     { return nil }
+func (s *stubProvider) DeleteAdvertisement(_ context.Context, _ string) error            { return nil }
+func (s *stubProvider) AddOrUpdatePolicy(_ context.Context, _ provider.PolicySpec) error { return nil }
+func (s *stubProvider) DeletePolicy(_ context.Context, _ string) error                   { return nil }
+func (s *stubProvider) Ready(_ context.Context) error                                    { return nil }
 func (s *stubProvider) Capabilities(_ context.Context) (provider.CapabilitySet, error) {
 	return provider.CapabilitySet{}, nil
 }
 
 // TestListenPortByDaemonType verifies that reconcileForProvider passes the
 // correct listen port to ConfigureSpeaker for each daemon type:
-//   - FRR   → 179  (inbound BGP connections accepted)
-//   - GoBGP → -1   (listen disabled; all sessions initiated outbound)
-//   - other → 0    (switch default; zero value for int32)
-//
-// Using -1 for GoBGP is required because GoBGP's StartBgp will attempt to
-// bind 0.0.0.0:179 when given any non-negative port, which fails with
-// "address already in use" when FRR is also running on the same host.
+//   - FRR   → 179   (standard BGP port; FRR owns the underlay)
+//   - GoBGP → 1790  (non-standard port avoids conflict with FRR's 179)
+//   - other → 0     (switch default; zero value for int32)
 func TestListenPortByDaemonType(t *testing.T) {
 	tests := []struct {
 		daemonType     string
 		wantListenPort int32
 	}{
 		{daemonType: "FRR", wantListenPort: 179},
-		{daemonType: "GoBGP", wantListenPort: -1},
+		{daemonType: "GoBGP", wantListenPort: 1790},
 		{daemonType: "unknown", wantListenPort: 0},
 	}
 

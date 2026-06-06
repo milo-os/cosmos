@@ -1,9 +1,9 @@
 // Package gobgp implements the BGP provider interface for GoBGP.
 //
 // GoBGP operates as the overlay iBGP daemon in cosmos. It manages VPN sessions
-// (IPv4/IPv6 VPNUnicast) between overlay nodes. It does NOT listen for inbound
-// BGP connections (ListenPort == -1 / disabled) — all sessions are initiated
-// outbound by GoBGP toward the remote peer's listening port.
+// (IPv4/IPv6 VPNUnicast) between overlay nodes. It listens on port 1790 (a
+// non-standard port that avoids conflicting with FRR on 179) and connects
+// outbound to peers also on port 1790.
 //
 // The implementation uses the GoBGP gRPC API (github.com/osrg/gobgp/v4/api)
 // exclusively. There is no fallback; if the daemon is unreachable, all calls
@@ -106,10 +106,8 @@ func (p *Provider) Capabilities(_ context.Context) (provider.CapabilitySet, erro
 // listen port. This method compares the running config against the desired
 // spec and restarts only when a change is detected.
 //
-// Note: GoBGP's listen port is stored in SpeakerSpec.ListenPort. For the
-// overlay role this is always -1 (listen disabled). The port value is passed
-// through without enforcement here; the controller is responsible for setting
-// it correctly per BGPInstance spec.
+// Note: GoBGP's listen port is 1790. The controller sets this per BGPInstance spec.
+// 1790 avoids conflict with FRR's 179 and matches the RemotePort used by peers.
 func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) (bool, error) {
 	// Probe current state.
 	resp, err := p.client.GetBgp(ctx, &gobgpapi.GetBgpRequest{})
@@ -277,8 +275,11 @@ func buildPeer(spec provider.PeerSpec) *gobgpapi.Peer {
 			},
 		},
 		AfiSafis: buildAfiSafis(spec.Families),
+		// RemotePort 1790 matches GoBGP's own listen port so that GoBGP-to-GoBGP
+		// sessions establish. 1790 also avoids collision with FRR's port 179.
 		Transport: &gobgpapi.Transport{
 			PassiveMode: spec.Passive,
+			RemotePort:  1790,
 		},
 	}
 
@@ -319,7 +320,7 @@ func buildAfiSafis(families []provider.AddressFamily) []*gobgpapi.AfiSafi {
 	if len(families) == 0 {
 		return []*gobgpapi.AfiSafi{
 			{Config: &gobgpapi.AfiSafiConfig{
-				Family: &gobgpapi.Family{Afi: gobgpapi.Family_AFI_IP6, Safi: gobgpapi.Family_SAFI_UNICAST},
+				Family:  &gobgpapi.Family{Afi: gobgpapi.Family_AFI_IP6, Safi: gobgpapi.Family_SAFI_UNICAST},
 				Enabled: true,
 			}},
 		}
@@ -544,7 +545,6 @@ func (p *Provider) upsertPolicy(ctx context.Context, name string, stmts []provid
 func policyStatementName(policyName string, i int) string {
 	return fmt.Sprintf("%s-s%d", policyName, i)
 }
-
 
 // definedSetName returns the GoBGP DefinedSet name for a policy statement.
 // Mirrors gobgpDefinedSetName from the legacy controller package.
