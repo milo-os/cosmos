@@ -125,7 +125,7 @@ func (r *InstanceReconciler) reconcileForProvider(
 	case "FRR":
 		listenPort = 179
 	case "GoBGP":
-		listenPort = 179
+		listenPort = -1 // GoBGP initiates outbound-only; inbound listen must be disabled
 	}
 
 	// Convert address families.

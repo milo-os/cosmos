@@ -88,7 +88,7 @@ type AddressFamily struct {
 type SpeakerSpec struct {
 	ASNumber int64
 	RouterID string
-	// ListenPort is 179 for FRR (standard BGP port). GoBGP uses 0 (listen disabled;
+	// ListenPort is 179 for FRR (standard BGP port). GoBGP uses -1 (listen disabled;
 	// it initiates outbound-only sessions to underlay peers).
 	ListenPort     int32
 	Families       []AddressFamily
