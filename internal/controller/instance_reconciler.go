@@ -20,8 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
 	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/bgp/api/v1alpha1"
 	"go.miloapis.com/bgp/internal/provider"
 )
 
@@ -125,7 +125,7 @@ func (r *InstanceReconciler) reconcileForProvider(
 	case "FRR":
 		listenPort = 179
 	case "GoBGP":
-		listenPort = 179
+		listenPort = 1790 // Non-standard port avoids conflict with FRR's 179 on the same host
 	}
 
 	// Convert address families.

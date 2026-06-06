@@ -32,8 +32,32 @@ spec:
                 echo "ERROR: no global-scope IPv6 address found"
                 exit 1
               fi
-              echo "Generating gobgp.conf with router-id=$NODE_IP"
-              sed "s/NODE_IP_PLACEHOLDER/$NODE_IP/g" /config-template/gobgp.conf > /config/gobgp.conf
+              # Compute router-id: last 4 bytes of the IPv6 address formatted as a
+              # dotted-quad IPv4 string.  This must match ipv6ToRouterID in
+              # internal/controller/provider_reconciler.go so that ConfigureSpeaker
+              # sees no mismatch and never calls StopBgp (which permanently breaks
+              # the GoBGP v4 server — it cannot be restarted in-process).
+              ROUTER_ID=$(awk -v ip="$NODE_IP" 'BEGIN {
+                for(i=0;i<=9;i++) h[i""]=i
+                h["a"]=10;h["b"]=11;h["c"]=12;h["d"]=13;h["e"]=14;h["f"]=15
+                ip=tolower(ip); sub(/%.*$/,"",ip)
+                if(index(ip,"::")){
+                  n=split(ip,p,"::")
+                  nl=(p[1]==""?0:split(p[1],L,":"))
+                  nr=(n<2||p[2]==""?0:split(p[2],R,":"))
+                  k=0
+                  for(i=1;i<=nl;i++) g[++k]=L[i]
+                  for(i=1;i<=8-nl-nr;i++) g[++k]="0"
+                  for(i=1;i<=nr;i++) g[++k]=R[i]
+                } else { split(ip,g,":") }
+                hex=sprintf("%04s%04s",g[7],g[8]); gsub(/ /,"0",hex)
+                for(i=0;i<4;i++){v=h[substr(hex,i*2+1,1)]*16+h[substr(hex,i*2+2,1)];printf "%s%d",(i?".":""),v}
+                print ""
+              }')
+              echo "Generating gobgp.conf with router-id=$ROUTER_ID local-address=$NODE_IP"
+              sed -e "s/NODE_IP_PLACEHOLDER/$NODE_IP/g" \
+                  -e "s/ROUTER_ID_PLACEHOLDER/$ROUTER_ID/g" \
+                  /config-template/gobgp.conf > /config/gobgp.conf
               cat /config/gobgp.conf
           volumeMounts:
             - name: config-template

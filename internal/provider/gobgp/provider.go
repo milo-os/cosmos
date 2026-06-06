@@ -1,11 +1,11 @@
 // Package gobgp implements the BGP provider interface for GoBGP.
 //
 // GoBGP operates as the overlay iBGP daemon in cosmos. It manages VPN sessions
-// (IPv4/IPv6 VPNUnicast) between overlay nodes. It does NOT listen for inbound
-// BGP connections (ListenPort == -1 / disabled) — all sessions are initiated
-// outbound by GoBGP toward the remote peer's listening port.
+// (IPv4/IPv6 VPNUnicast) between overlay nodes. It listens on port 1790 (a
+// non-standard port that avoids conflicting with FRR on 179) and connects
+// outbound to peers also on port 1790.
 //
-// The implementation uses the GoBGP gRPC API (github.com/osrg/gobgp/v3/api)
+// The implementation uses the GoBGP gRPC API (github.com/osrg/gobgp/v4/api)
 // exclusively. There is no fallback; if the daemon is unreachable, all calls
 // return an error.
 //
@@ -16,14 +16,17 @@ package gobgp
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"strings"
+	"time"
 
-	gobgpapi "github.com/osrg/gobgp/v3/api"
+	gobgpapi "github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/pkg/apiutil"
+	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/anypb"
 
 	"go.miloapis.com/bgp/internal/provider"
 )
@@ -46,7 +49,7 @@ const defaultEndpoint = "localhost:50051"
 type Provider struct {
 	endpoint string
 	conn     *grpc.ClientConn
-	client   gobgpapi.GobgpApiClient
+	client   gobgpapi.GoBgpServiceClient
 }
 
 // New dials the GoBGP gRPC endpoint and returns a ready-to-use Provider.
@@ -63,7 +66,7 @@ func New(endpoint string) (*Provider, error) {
 	return &Provider{
 		endpoint: endpoint,
 		conn:     conn,
-		client:   gobgpapi.NewGobgpApiClient(conn),
+		client:   gobgpapi.NewGoBgpServiceClient(conn),
 	}, nil
 }
 
@@ -103,10 +106,8 @@ func (p *Provider) Capabilities(_ context.Context) (provider.CapabilitySet, erro
 // listen port. This method compares the running config against the desired
 // spec and restarts only when a change is detected.
 //
-// Note: GoBGP's listen port is stored in SpeakerSpec.ListenPort. For the
-// overlay role this is always -1 (listen disabled). The port value is passed
-// through without enforcement here; the controller is responsible for setting
-// it correctly per BGPInstance spec.
+// Note: GoBGP's listen port is 1790. The controller sets this per BGPInstance spec.
+// 1790 avoids conflict with FRR's 179 and matches the RemotePort used by peers.
 func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) (bool, error) {
 	// Probe current state.
 	resp, err := p.client.GetBgp(ctx, &gobgpapi.GetBgpRequest{})
@@ -217,12 +218,12 @@ func (p *Provider) DeleteAdvertisement(ctx context.Context, prefix string) error
 func (p *Provider) AddOrUpdatePolicy(ctx context.Context, spec provider.PolicySpec) error {
 	// Build and apply DefinedSets + Policy for each direction.
 	if len(spec.ImportStatements) > 0 {
-		if err := p.applyDirectionalPolicy(ctx, spec.Name, spec.ImportStatements, gobgpapi.PolicyDirection_IMPORT); err != nil {
+		if err := p.applyDirectionalPolicy(ctx, spec.Name, spec.ImportStatements, gobgpapi.PolicyDirection_POLICY_DIRECTION_IMPORT); err != nil {
 			return fmt.Errorf("gobgp: AddOrUpdatePolicy import %s: %w", spec.Name, err)
 		}
 	}
 	if len(spec.ExportStatements) > 0 {
-		if err := p.applyDirectionalPolicy(ctx, spec.Name, spec.ExportStatements, gobgpapi.PolicyDirection_EXPORT); err != nil {
+		if err := p.applyDirectionalPolicy(ctx, spec.Name, spec.ExportStatements, gobgpapi.PolicyDirection_POLICY_DIRECTION_EXPORT); err != nil {
 			return fmt.Errorf("gobgp: AddOrUpdatePolicy export %s: %w", spec.Name, err)
 		}
 	}
@@ -234,7 +235,7 @@ func (p *Provider) AddOrUpdatePolicy(ctx context.Context, spec provider.PolicySp
 // by GoBGP's inUse(activeIds) check.
 func (p *Provider) DeletePolicy(ctx context.Context, policyName string) error {
 	// Remove global assignments first (import and export).
-	for _, dir := range []gobgpapi.PolicyDirection{gobgpapi.PolicyDirection_IMPORT, gobgpapi.PolicyDirection_EXPORT} {
+	for _, dir := range []gobgpapi.PolicyDirection{gobgpapi.PolicyDirection_POLICY_DIRECTION_IMPORT, gobgpapi.PolicyDirection_POLICY_DIRECTION_EXPORT} {
 		_, _ = p.client.DeletePolicyAssignment(ctx, &gobgpapi.DeletePolicyAssignmentRequest{
 			Assignment: &gobgpapi.PolicyAssignment{
 				Name:      "global",
@@ -274,8 +275,11 @@ func buildPeer(spec provider.PeerSpec) *gobgpapi.Peer {
 			},
 		},
 		AfiSafis: buildAfiSafis(spec.Families),
+		// RemotePort 1790 matches GoBGP's own listen port so that GoBGP-to-GoBGP
+		// sessions establish. 1790 also avoids collision with FRR's port 179.
 		Transport: &gobgpapi.Transport{
 			PassiveMode: spec.Passive,
+			RemotePort:  1790,
 		},
 	}
 
@@ -316,7 +320,7 @@ func buildAfiSafis(families []provider.AddressFamily) []*gobgpapi.AfiSafi {
 	if len(families) == 0 {
 		return []*gobgpapi.AfiSafi{
 			{Config: &gobgpapi.AfiSafiConfig{
-				Family: &gobgpapi.Family{Afi: gobgpapi.Family_AFI_IP6, Safi: gobgpapi.Family_SAFI_UNICAST},
+				Family:  &gobgpapi.Family{Afi: gobgpapi.Family_AFI_IP6, Safi: gobgpapi.Family_SAFI_UNICAST},
 				Enabled: true,
 			}},
 		}
@@ -358,53 +362,40 @@ func afiSafiFromStrings(afi, safi string) (gobgpapi.Family_Afi, gobgpapi.Family_
 // addPath injects or withdraws a single IPv6 unicast CIDR in GoBGP's global RIB.
 // This mirrors the addPathIPv6Prefix helper from the legacy controller package.
 func (p *Provider) addPath(ctx context.Context, cidr string, isWithdraw bool) error {
-	// Parse the CIDR to extract prefix and length.
-	slash := strings.LastIndex(cidr, "/")
-	if slash < 0 {
-		return fmt.Errorf("invalid CIDR %q: missing prefix length", cidr)
-	}
-	prefix := cidr[:slash]
-	var prefixLen uint32
-	if _, err := fmt.Sscanf(cidr[slash+1:], "%d", &prefixLen); err != nil {
-		return fmt.Errorf("parse prefix length from %q: %w", cidr, err)
-	}
-
-	nlri, err := anypb.New(&gobgpapi.IPAddressPrefix{
-		PrefixLen: prefixLen,
-		Prefix:    prefix,
-	})
+	prefix, err := netip.ParsePrefix(cidr)
 	if err != nil {
-		return fmt.Errorf("marshal NLRI for %q: %w", cidr, err)
+		return fmt.Errorf("invalid CIDR %q: %w", cidr, err)
 	}
 
-	family := &gobgpapi.Family{Afi: gobgpapi.Family_AFI_IP6, Safi: gobgpapi.Family_SAFI_UNICAST}
-
-	origin, err := anypb.New(&gobgpapi.OriginAttribute{Origin: 0}) // IGP
+	nlri, err := bgppkt.NewIPAddrPrefix(prefix.Masked())
 	if err != nil {
-		return fmt.Errorf("marshal origin for %q: %w", cidr, err)
+		return fmt.Errorf("build NLRI for %q: %w", cidr, err)
 	}
 
-	// IPv6 locally-originated routes require MpReachNlri with a next-hop.
+	// IPv6 locally-originated routes require MpReachNLRI with a next-hop.
 	// "::" (unspecified) is the conventional self next-hop for locally-injected paths.
-	nhAttr, err := anypb.New(&gobgpapi.MpReachNLRIAttribute{
-		Family:   family,
-		NextHops: []string{"::"},
-		Nlris:    []*anypb.Any{nlri},
-	})
+	mpReach, err := bgppkt.NewPathAttributeMpReachNLRI(
+		bgppkt.RF_IPv6_UC,
+		[]bgppkt.PathNLRI{{NLRI: nlri}},
+		netip.MustParseAddr("::"),
+	)
 	if err != nil {
-		return fmt.Errorf("marshal MpReachNlri for %q: %w", cidr, err)
+		return fmt.Errorf("build MpReachNLRI for %q: %w", cidr, err)
 	}
 
-	pattrs := []*anypb.Any{origin, nhAttr}
+	attrs := []bgppkt.PathAttributeInterface{
+		bgppkt.NewPathAttributeOrigin(bgppkt.BGP_ORIGIN_ATTR_TYPE_IGP),
+		mpReach,
+	}
+
+	path, err := apiutil.NewPath(bgppkt.RF_IPv6_UC, nlri, isWithdraw, attrs, time.Now())
+	if err != nil {
+		return fmt.Errorf("marshal path for %q: %w", cidr, err)
+	}
 
 	_, err = p.client.AddPath(ctx, &gobgpapi.AddPathRequest{
-		TableType: gobgpapi.TableType_GLOBAL,
-		Path: &gobgpapi.Path{
-			Family:     family,
-			Nlri:       nlri,
-			Pattrs:     pattrs,
-			IsWithdraw: isWithdraw,
-		},
+		TableType: gobgpapi.TableType_TABLE_TYPE_GLOBAL,
+		Path:      path,
 	})
 	if err != nil {
 		return fmt.Errorf("AddPath %q: %w", cidr, err)
@@ -430,7 +421,7 @@ func (p *Provider) applyDirectionalPolicy(ctx context.Context, name string, stmt
 	assignment := &gobgpapi.PolicyAssignment{
 		Name:          "global",
 		Direction:     direction,
-		DefaultAction: gobgpapi.RouteAction_ACCEPT,
+		DefaultAction: gobgpapi.RouteAction_ROUTE_ACTION_ACCEPT,
 		Policies:      []*gobgpapi.Policy{{Name: name}},
 	}
 	_, err := p.client.AddPolicyAssignment(ctx, &gobgpapi.AddPolicyAssignmentRequest{
@@ -459,7 +450,7 @@ func (p *Provider) upsertDefinedSets(ctx context.Context, policyName string, stm
 
 		_, err := p.client.AddDefinedSet(ctx, &gobgpapi.AddDefinedSetRequest{
 			DefinedSet: &gobgpapi.DefinedSet{
-				DefinedType: gobgpapi.DefinedType_PREFIX,
+				DefinedType: gobgpapi.DefinedType_DEFINED_TYPE_PREFIX,
 				Name:        setName,
 				Prefixes:    prefixes,
 			},
@@ -492,7 +483,7 @@ func (p *Provider) upsertPolicy(ctx context.Context, name string, stmts []provid
 			gStmt.Conditions = &gobgpapi.Conditions{
 				PrefixSet: &gobgpapi.MatchSet{
 					Name: definedSetName(name, i),
-					Type: gobgpapi.MatchSet_ANY,
+					Type: gobgpapi.MatchSet_TYPE_ANY,
 				},
 			}
 		}
@@ -500,9 +491,9 @@ func (p *Provider) upsertPolicy(ctx context.Context, name string, stmts []provid
 		gStmt.Actions = &gobgpapi.Actions{}
 		switch stmt.Actions.RouteDisposition {
 		case "Reject":
-			gStmt.Actions.RouteAction = gobgpapi.RouteAction_REJECT
+			gStmt.Actions.RouteAction = gobgpapi.RouteAction_ROUTE_ACTION_REJECT
 		default: // "Accept"
-			gStmt.Actions.RouteAction = gobgpapi.RouteAction_ACCEPT
+			gStmt.Actions.RouteAction = gobgpapi.RouteAction_ROUTE_ACTION_ACCEPT
 		}
 
 		gStmts = append(gStmts, gStmt)
@@ -511,13 +502,13 @@ func (p *Provider) upsertPolicy(ctx context.Context, name string, stmts []provid
 	// Implicit final Accept — ensures routes not matched by earlier statements
 	// are not silently dropped.
 	gStmts = append(gStmts, &gobgpapi.Statement{
-		Actions: &gobgpapi.Actions{RouteAction: gobgpapi.RouteAction_ACCEPT},
+		Actions: &gobgpapi.Actions{RouteAction: gobgpapi.RouteAction_ROUTE_ACTION_ACCEPT},
 	})
 
 	// Step 1: Remove global assignments so the policy is no longer "in use".
 	// GoBGP's DeletePolicy(All=true) blocks if inUse(activeIds) is true, which
 	// it will be when the policy is assigned to the global routing table.
-	for _, dir := range []gobgpapi.PolicyDirection{gobgpapi.PolicyDirection_IMPORT, gobgpapi.PolicyDirection_EXPORT} {
+	for _, dir := range []gobgpapi.PolicyDirection{gobgpapi.PolicyDirection_POLICY_DIRECTION_IMPORT, gobgpapi.PolicyDirection_POLICY_DIRECTION_EXPORT} {
 		_, _ = p.client.DeletePolicyAssignment(ctx, &gobgpapi.DeletePolicyAssignmentRequest{
 			Assignment: &gobgpapi.PolicyAssignment{
 				Name:      "global",
@@ -554,7 +545,6 @@ func (p *Provider) upsertPolicy(ctx context.Context, name string, stmts []provid
 func policyStatementName(policyName string, i int) string {
 	return fmt.Sprintf("%s-s%d", policyName, i)
 }
-
 
 // definedSetName returns the GoBGP DefinedSet name for a policy statement.
 // Mirrors gobgpDefinedSetName from the legacy controller package.

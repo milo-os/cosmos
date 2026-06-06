@@ -8,9 +8,9 @@ import (
 	"net"
 	"time"
 
-	gobgpapi "github.com/osrg/gobgp/v3/api"
-	"github.com/osrg/gobgp/v3/pkg/apiutil"
-	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
+	gobgpapi "github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/pkg/apiutil"
+	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -72,12 +72,12 @@ func RunRouteWatcher(ctx context.Context, endpoint, srv6Net string) {
 }
 
 // dialGoBGP establishes a gRPC connection to the GoBGP endpoint.
-func dialGoBGP(ctx context.Context, endpoint string) (gobgpapi.GobgpApiClient, *grpc.ClientConn, error) {
+func dialGoBGP(ctx context.Context, endpoint string) (gobgpapi.GoBgpServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial: %w", err)
 	}
-	c := gobgpapi.NewGobgpApiClient(conn)
+	c := gobgpapi.NewGoBgpServiceClient(conn)
 	// Ping to verify connectivity.
 	if _, err := c.GetBgp(ctx, &gobgpapi.GetBgpRequest{}); err != nil {
 		conn.Close()
@@ -93,7 +93,7 @@ func dialGoBGP(ctx context.Context, endpoint string) (gobgpapi.GobgpApiClient, *
 // knownPrefixes. After the initial RIB dump (paths with Init=true) arrives,
 // any kernel route not present in the RIB is considered stale (left over from
 // a previous operator lifetime) and is deleted.
-func watchAndProgram(ctx context.Context, client gobgpapi.GobgpApiClient, ownPrefix *net.IPNet) error {
+func watchAndProgram(ctx context.Context, client gobgpapi.GoBgpServiceClient, ownPrefix *net.IPNet) error {
 	// Seed knownPrefixes with all routes already in the kernel so stale routes
 	// left from a prior operator run can be identified after the initial RIB dump.
 	existingRoutes, err := bgpnetlink.ListManagedRoutes()
@@ -114,7 +114,7 @@ func watchAndProgram(ctx context.Context, client gobgpapi.GobgpApiClient, ownPre
 		Table: &gobgpapi.WatchEventRequest_Table{
 			Filters: []*gobgpapi.WatchEventRequest_Table_Filter{
 				{
-					Type: gobgpapi.WatchEventRequest_Table_Filter_BEST,
+					Type: gobgpapi.WatchEventRequest_Table_Filter_TYPE_BEST,
 					Init: true,
 				},
 			},
@@ -220,10 +220,10 @@ func extractPrefixAndNextHop(path *gobgpapi.Path) (*net.IPNet, net.IP, error) {
 	for _, attr := range attrs {
 		switch a := attr.(type) {
 		case *bgp.PathAttributeNextHop:
-			nextHop = a.Value
+			nextHop = a.Value.AsSlice()
 		case *bgp.PathAttributeMpReachNLRI:
-			if len(a.Nexthop) > 0 {
-				nextHop = a.Nexthop
+			if a.Nexthop.IsValid() {
+				nextHop = a.Nexthop.AsSlice()
 			}
 		}
 	}
