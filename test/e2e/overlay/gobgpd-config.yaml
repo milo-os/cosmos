@@ -9,4 +9,3 @@ data:
       as = 65000
       router-id = "ROUTER_ID_PLACEHOLDER"
       local-address-list = ["NODE_IP_PLACEHOLDER"]
-      port = 1790

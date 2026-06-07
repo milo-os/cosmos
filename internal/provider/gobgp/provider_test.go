@@ -295,6 +295,10 @@ func TestBuildPeer(t *testing.T) {
 		if peer.Timers.Config.KeepaliveInterval != 30 {
 			t.Errorf("KeepaliveInterval = %d, want 30", peer.Timers.Config.KeepaliveInterval)
 		}
+		// RemotePort must be zero — GoBGP dials the standard BGP port 179 by default.
+		if peer.Transport.RemotePort != 0 {
+			t.Errorf("Transport.RemotePort = %d, want 0 (dial standard port 179)", peer.Transport.RemotePort)
+		}
 		// Optional fields must be nil when not specified.
 		if peer.EbgpMultihop != nil {
 			t.Errorf("EbgpMultihop = %v, want nil", peer.EbgpMultihop)
@@ -389,7 +393,7 @@ func TestConfigureSpeaker(t *testing.T) {
 	spec := provider.SpeakerSpec{
 		ASNumber:   64512,
 		RouterID:   "10.0.0.1",
-		ListenPort: 1790,
+		ListenPort: -1,
 	}
 
 	t.Run("uninitialised (Asn=0): skips StopBgp, calls StartBgp", func(t *testing.T) {
@@ -420,8 +424,8 @@ func TestConfigureSpeaker(t *testing.T) {
 		if g.RouterId != "10.0.0.1" {
 			t.Errorf("StartBgp Global.RouterId = %q, want %q", g.RouterId, "10.0.0.1")
 		}
-		if g.ListenPort != 1790 {
-			t.Errorf("StartBgp Global.ListenPort = %d, want 1790", g.ListenPort)
+		if g.ListenPort != -1 {
+			t.Errorf("StartBgp Global.ListenPort = %d, want -1", g.ListenPort)
 		}
 	})
 
@@ -429,7 +433,7 @@ func TestConfigureSpeaker(t *testing.T) {
 		fake := &fakeGoBgpClient{
 			getBgpFn: func(_ context.Context, _ *gobgpapi.GetBgpRequest, _ ...grpc.CallOption) (*gobgpapi.GetBgpResponse, error) {
 				return &gobgpapi.GetBgpResponse{Global: &gobgpapi.Global{
-					Asn: 64512, RouterId: "10.0.0.1", ListenPort: 1790,
+					Asn: 64512, RouterId: "10.0.0.1", ListenPort: -1,
 				}}, nil
 			},
 		}
@@ -454,7 +458,7 @@ func TestConfigureSpeaker(t *testing.T) {
 		fake := &fakeGoBgpClient{
 			getBgpFn: func(_ context.Context, _ *gobgpapi.GetBgpRequest, _ ...grpc.CallOption) (*gobgpapi.GetBgpResponse, error) {
 				return &gobgpapi.GetBgpResponse{Global: &gobgpapi.Global{
-					Asn: 65000, RouterId: "10.0.0.1", ListenPort: 1790,
+					Asn: 65000, RouterId: "10.0.0.1", ListenPort: -1,
 				}}, nil
 			},
 		}

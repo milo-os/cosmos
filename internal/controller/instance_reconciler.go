@@ -125,7 +125,7 @@ func (r *InstanceReconciler) reconcileForProvider(
 	case "FRR":
 		listenPort = 179
 	case "GoBGP":
-		listenPort = 1790 // Non-standard port avoids conflict with FRR's 179 on the same host
+		listenPort = -1 // Disable listener; GoBGP only initiates outbound connections to its RR
 	}
 
 	// Convert address families.

@@ -70,9 +70,6 @@ spec:
           imagePullPolicy: IfNotPresent
           args: ["-f", "/config/gobgp.conf", "--log-level=debug", "-p"]
           ports:
-            - containerPort: 1790
-              protocol: TCP
-              name: bgp
             - containerPort: 50051
               protocol: TCP
               name: grpc
