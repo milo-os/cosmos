@@ -115,7 +115,10 @@ func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSp
 		return false, fmt.Errorf("gobgp: ConfigureSpeaker GetBgp: %w", err)
 	}
 
-	needsRestart := resp == nil || resp.Global == nil
+	// GoBGP v4 returns Asn=0 (not NotFound) when the BGP engine has not been
+	// started yet. Treat Asn==0 as uninitialised — do not call StopBgp, which
+	// would terminate the gobgpd process.
+	needsRestart := resp == nil || resp.Global == nil || resp.Global.Asn == 0
 	if !needsRestart {
 		g := resp.Global
 		needsRestart = g.Asn != uint32(spec.ASNumber) ||
@@ -128,7 +131,7 @@ func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSp
 	}
 
 	// Stop the current BGP instance if one is running.
-	if resp != nil && resp.Global != nil {
+	if resp != nil && resp.Global != nil && resp.Global.Asn != 0 {
 		if _, err := p.client.StopBgp(ctx, &gobgpapi.StopBgpRequest{}); err != nil {
 			return false, fmt.Errorf("gobgp: ConfigureSpeaker StopBgp: %w", err)
 		}
