@@ -31,7 +31,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"go.miloapis.com/bgp/internal/provider"
+	"go.miloapis.com/cosmos/internal/provider"
 )
 
 // FRRCapabilities are the compile-time capabilities of the FRR provider.

@@ -7,9 +7,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
-	bgpv1alpha1 "go.miloapis.com/bgp/api/bgp/v1alpha1"
-	"go.miloapis.com/bgp/internal/provider"
+	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
+	"go.miloapis.com/cosmos/internal/provider"
 )
 
 // stubProvider records the most recent ConfigureSpeaker call for inspection.

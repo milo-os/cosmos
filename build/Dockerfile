@@ -3,10 +3,10 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /bgp ./cmd/bgp
+RUN CGO_ENABLED=0 go build -o /cosmos ./cmd/cosmos
 
 FROM alpine:3.19
 RUN adduser -D -u 65532 nonroot
-COPY --from=build /bgp /usr/local/bin/bgp
+COPY --from=build /cosmos /usr/local/bin/cosmos
 USER 65532:65532
-ENTRYPOINT ["bgp"]
+ENTRYPOINT ["cosmos"]

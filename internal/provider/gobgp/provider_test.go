@@ -6,7 +6,7 @@ import (
 
 	gobgpapi "github.com/osrg/gobgp/v4/api"
 
-	"go.miloapis.com/bgp/internal/provider"
+	"go.miloapis.com/cosmos/internal/provider"
 )
 
 func TestAfiSafiFromStrings(t *testing.T) {

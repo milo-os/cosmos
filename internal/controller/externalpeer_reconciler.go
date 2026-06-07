@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	bgpv1alpha1 "go.miloapis.com/bgp/api/bgp/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
 )
 
 // ExternalPeerReconciler reconciles BGPExternalPeer resources.

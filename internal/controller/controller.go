@@ -15,9 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
-	bgpv1alpha1 "go.miloapis.com/bgp/api/bgp/v1alpha1"
-	"go.miloapis.com/bgp/internal/provider"
+	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
+	"go.miloapis.com/cosmos/internal/provider"
 )
 
 // scheme holds the runtime.Scheme for all types used by the manager.

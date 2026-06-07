@@ -19,9 +19,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	providersv1alpha1 "go.miloapis.com/bgp/api/providers/v1alpha1"
-	bgpv1alpha1 "go.miloapis.com/bgp/api/bgp/v1alpha1"
-	"go.miloapis.com/bgp/internal/provider"
+	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
+	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
+	"go.miloapis.com/cosmos/internal/provider"
 )
 
 // PeerReconciler reconciles BGPPeer resources.
