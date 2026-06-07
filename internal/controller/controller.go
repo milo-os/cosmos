@@ -14,6 +14,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
 	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
@@ -149,6 +150,8 @@ func Run(ctx context.Context, metricsAddr, healthAddr, clusterRole, nodeName str
 	if healthAddr == "" {
 		healthAddr = ":8083"
 	}
+
+	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
 
 	restCfg, err := ctrl.GetConfig()
 	if err != nil {
