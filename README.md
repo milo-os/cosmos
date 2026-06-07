@@ -2,102 +2,127 @@
 
 [![CI](https://github.com/milo-os/cosmos/actions/workflows/ci.yaml/badge.svg)](https://github.com/milo-os/cosmos/actions/workflows/ci.yaml)
 
-Cosmos is a BGP control plane for Kubernetes. You define speakers, sessions,
-policies, and VPCs as Kubernetes resources; the controller reconciles them into
-a running [GoBGP][gobgp] instance on each node and programs learned routes into
-the kernel.
+Cosmos is a BGP control plane for Kubernetes. You define instances, sessions,
+advertisements, and VPCs as Kubernetes resources; the controller reconciles
+them into running [FRR][frr] and [GoBGP][gobgp] daemons on each node and
+programs learned routes into the kernel via [netlink][netlink].
 
-**API groups:** `bgp.miloapis.com/v1alpha1` · `vpc.miloapis.com/v1alpha1`
+**API groups:**
+`bgp.miloapis.com/v1alpha1` · `providers.bgp.miloapis.com/v1alpha1` · `vpc.miloapis.com/v1alpha1`
 
 ---
 
 ## How it works
 
-Cosmos runs as a DaemonSet. Each pod has two runtime containers:
+Cosmos runs as a DaemonSet in the `bgp-system` namespace. Each node runs two
+BGP planes:
 
-- **`bgp`** — the controller; watches CRDs and configures GoBGP over [gRPC][grpc]
-- **`gobgpd`** — the GoBGP daemon; handles the BGP wire protocol
+- **Underlay** — [FRR][frr] handles IPv6 unicast sessions to top-of-rack switches
+- **Overlay** — [GoBGP][gobgp] handles VPNv4/VPNv6 sessions to regional route reflectors
 
-An init container discovers the node's global IPv6 address and writes the
-initial GoBGP configuration before the main containers start. The controller
-programs kernel routes from BGP [RIB][rib] events via [netlink][netlink].
+At startup the controller auto-bootstraps a `BGPProvider` resource for each
+daemon. These providers are the unit of targeting for all other resources.
 
-The controller has no built-in knowledge of nodes, clusters, or datacenter
-layout — all topology is expressed through CRDs.
+Cosmos operates in a multi-cluster model:
+
+1. A **management cluster** holds `BGPSession` and `BGPExternalPeer` resources.
+   The management cluster cosmos resolves peer addresses and writes fully
+   self-contained session specs.
+2. [Karmada][karmada] propagates `BGPSession` resources to **POP and infra
+   clusters**.
+3. On each member cluster, the `SessionReconciler` generates `BGPPeer` resources
+   from the propagated sessions, and the `PeerReconciler` configures the daemons
+   over [gRPC][grpc].
+
+The controller has no built-in knowledge of datacenter topology — all topology
+is expressed through CRDs and Karmada propagation policies.
 
 ---
 
 ## Key features
 
-- **Topology-agnostic.** No built-in node or cluster model; topology lives entirely in CRDs.
+- **Dual-plane per node.** FRR underlay (IPv6 unicast) and GoBGP overlay (VPNv4/VPNv6) managed independently.
+- **Provider abstraction.** `BGPProvider` resources decouple topology from daemon type; FRR and GoBGP are both supported.
+- **Auto-bootstrapped providers.** No manual daemon registration; the controller creates `BGPProvider` resources at startup.
+- **Multi-cluster propagation.** Sessions are written once in the management cluster and distributed by Karmada.
 - **CNI-independent.** Works with any [CNI][cni] or none at all.
-- **Declarative session management.** `BGPPeeringPolicy` creates sessions through label selectors; full-mesh and [route-reflector][rr] topologies both supported.
-- **Producer/consumer model.** Any system — node operators, automation pipelines, humans — can create BGP CRDs; the controller reconciles them uniformly.
 - **VPC primitives.** `VPC` and `VPCAttachment` CRDs model virtual networks and their interface bindings.
 
 ---
 
 ## Prerequisites
 
-- Kubernetes cluster with IPv6 enabled (nodes need global-scope IPv6 addresses)
-- `kubectl` configured for your cluster
-- Container images accessible to your cluster:
-  - `ghcr.io/milo-os/cosmos:latest` — controller + init container
-  - A GoBGP daemon image (`gobgpd:latest` by default)
+- Multi-cluster Kubernetes with IPv6 enabled (nodes need global-scope IPv6 addresses)
+- [Karmada][karmada] for resource propagation (management → POP/infra clusters)
+- `kubectl` configured for your clusters
+- Container images accessible to your clusters:
+  - `ghcr.io/milo-os/cosmos:latest` — controller
+  - An FRR image with northbound gRPC enabled
+  - A GoBGP daemon image
 
 ---
 
 ## Quick start
 
-Install the CRDs and deploy the controller:
+Install the CRDs and deploy the controller on a member cluster:
 
 ```bash
 kubectl apply -k config/crd
 kubectl apply -k config/deploy
 ```
 
-Create a `BGPConfiguration` (one per cluster):
-
-```yaml
-apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPConfiguration
-metadata:
-  name: default
-spec:
-  asNumber: 65001
-  listenPort: 1790
-  routerIDSource: NodeIP
-```
-
-Create `BGPEndpoint` resources for your nodes and wire them together with a
-peering policy:
-
-```yaml
-apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPEndpoint
-metadata:
-  name: node-worker-01
-  labels:
-    bgp.miloapis.com/role: node
-spec:
-  address: "2001:db8:1::1"
-  asNumber: 65001
----
-apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPPeeringPolicy
-metadata:
-  name: mesh
-spec:
-  selector:
-    matchLabels:
-      bgp.miloapis.com/role: node
-  mode: mesh
-```
-
-Check session state:
+After the DaemonSet pods become ready, verify that `BGPProvider` resources were
+auto-bootstrapped (one per daemon per node):
 
 ```bash
-kubectl get bgpsess
+kubectl get bgpproviders
+```
+
+Create a `BGPInstance` to configure one BGP plane. The `providerSelector`
+targets the auto-bootstrapped providers for that plane:
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPInstance
+metadata:
+  name: underlay
+spec:
+  providerSelector:
+    matchLabels:
+      bgp.miloapis.com/daemon: frr
+  asNumber: 65000
+  addressFamilies:
+    - afi: IPv6
+      safi: Unicast
+```
+
+In the management cluster, create a `BGPSession` to establish peering. Sessions
+are propagated to member clusters by Karmada:
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPSession
+metadata:
+  name: node-1-to-tor-1
+spec:
+  fromProviderSelector:
+    matchLabels:
+      bgp.miloapis.com/node: node-1
+      bgp.miloapis.com/daemon: frr
+  fromInstanceRef: underlay
+  toPeers:
+    - address: "2001:db8:fabric::1"
+      asNumber: 65000
+      instanceRef: underlay
+  addressFamilies:
+    - afi: IPv6
+      safi: Unicast
+```
+
+After Karmada propagation, verify generated peer resources and session state:
+
+```bash
+kubectl get bgppeers
 ```
 
 For a complete walkthrough, see the [Getting Started guide](docs/getting-started.md).
@@ -108,14 +133,20 @@ For a complete walkthrough, see the [Getting Started guide](docs/getting-started
 
 ### BGP — `bgp.miloapis.com/v1alpha1`
 
-| Resource           | Short name   | Description                                                          |
-|--------------------|--------------|----------------------------------------------------------------------|
-| `BGPConfiguration` | `bgpconfig`  | Speaker identity: AS number, listen port, router ID. One per cluster.|
-| `BGPEndpoint`      | `bgpep`      | BGP speaker address and AS number. One per node.                     |
-| `BGPSession`       | `bgpsess`    | Peering relationship between two endpoints.                          |
-| `BGPPeeringPolicy` | `bgppp`      | Automates session creation via label selectors.                      |
-| `BGPAdvertisement` | `bgpadvert`  | Prefix advertisement with optional communities and LOCAL_PREF.       |
-| `BGPRoutePolicy`   | `bgprp`      | Import/export filtering with prefix matching.                        |
+| Resource            | Short name | Description                                                                          |
+|---------------------|------------|--------------------------------------------------------------------------------------|
+| `BGPInstance`       | `bgpi`     | Speaker identity: AS number, address families, timers. Targets providers by selector.|
+| `BGPExternalPeer`   | `bgpep`    | Registry entry for peers outside the cosmos-managed fleet. Management cluster only.  |
+| `BGPPeer`           | `bgppr`    | Per-provider peer configuration. Generated by `SessionReconciler`. Never written directly.|
+| `BGPSession`        | `bgps`     | Bilateral session intent. Written in management cluster; propagated via Karmada.     |
+| `BGPAdvertisement`  | `bgpadv`   | Infrastructure prefix advertisement (loopbacks, SRv6 locators). Not for workload routes.|
+| `BGPRoutePolicy`    | `bgprp`    | Import/export route filtering applied to matched `BGPPeer` resources.                |
+
+### Providers — `providers.bgp.miloapis.com/v1alpha1`
+
+| Resource      | Short name | Description                                                              |
+|---------------|------------|--------------------------------------------------------------------------|
+| `BGPProvider` | `bgpp`     | One BGP daemon instance (FRR or GoBGP). Auto-bootstrapped at startup.   |
 
 ### VPC — `vpc.miloapis.com/v1alpha1`
 
@@ -139,10 +170,16 @@ task tools
 | `task build`      | Compile all packages                                                 |
 | `task test`       | Run unit tests                                                       |
 | `task lint`       | Run golangci-lint                                                    |
+| `task lint-fix`   | Run golangci-lint and apply auto-fixes                               |
 | `task vet`        | Run go vet                                                           |
+| `task fmt`        | Run go fmt                                                           |
 | `task generate`   | Regenerate deepcopy methods                                          |
 | `task manifests`  | Regenerate CRD manifests from API types                              |
+| `task image`      | Build the container image                                            |
+| `task image-push` | Build and push the container image                                   |
 | `task test-e2e`   | Create a kind cluster, deploy, run the full E2E suite, and tear down |
+| `task ci`         | Run the full CI pipeline locally (build, vet, unit tests, and e2e)  |
+| `task clean`      | Remove build artifacts and temporary files                           |
 
 E2E tests use [Chainsaw][chainsaw] and run against a [kind][kind] cluster. The
 full suite also runs in CI on every pull request.
@@ -157,17 +194,22 @@ docker build -f build/Dockerfile -t ghcr.io/milo-os/cosmos:dev .
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md) — deploy and establish your first BGP session
+- [Getting started](docs/getting-started.md) — deploy and establish your first BGP sessions
+- [API reference](docs/api/README.md) — full CRD field definitions, conditions, and operational contracts
 - [Service design](docs/design/) — architecture, controller internals, and design decisions
 - [Enhancements](docs/enhancements/) — accepted design proposals
 
 ### Examples
 
-- [Single-cluster full mesh](docs/examples/single-cluster-mesh.yaml)
-- [Route-reflector topology](docs/examples/route-reflector.yaml)
-- [eBGP peering](docs/examples/ebgp-peering.yaml)
-- [Prefix advertisement with communities](docs/examples/prefix-advertisement.yaml)
-- [Route filtering](docs/examples/route-filtering.yaml)
+- [BGPProvider (auto-bootstrapped)](docs/examples/pop-bgpprovider-auto.yaml)
+- [BGPInstance — underlay FRR](docs/examples/pop-bgpinstance-underlay.yaml)
+- [BGPInstance — overlay GoBGP](docs/examples/pop-bgpinstance-overlay.yaml)
+- [BGPInstance — infra route reflector](docs/examples/infra-bgpinstance-rr.yaml)
+- [BGPExternalPeer — ToR switch](docs/examples/mgmt-bgpexternalpeer-tor.yaml)
+- [BGPSession — underlay to ToR](docs/examples/mgmt-bgpsession-underlay-tor.yaml)
+- [BGPSession — overlay to route reflectors](docs/examples/mgmt-bgpsession-overlay-rrs.yaml)
+- [BGPSession — RR client (infra)](docs/examples/infra-bgpsession-rr-client.yaml)
+- [Rejected configurations](docs/examples/rejected-configurations.yaml)
 
 ---
 
@@ -177,9 +219,10 @@ docker build -f build/Dockerfile -t ghcr.io/milo-os/cosmos:dev .
 
 <!-- References -->
 [bgp]: https://datatracker.ietf.org/doc/html/rfc4271
+[frr]: https://frrouting.org/
 [gobgp]: https://github.com/osrg/gobgp
 [grpc]: https://grpc.io/
-[rib]: https://en.wikipedia.org/wiki/Routing_table
+[karmada]: https://karmada.io/
 [netlink]: https://man7.org/linux/man-pages/man7/netlink.7.html
 [cni]: https://www.cni.dev/
 [rr]: https://datatracker.ietf.org/doc/html/rfc4456
