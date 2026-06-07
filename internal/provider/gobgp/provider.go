@@ -1,9 +1,9 @@
 // Package gobgp implements the BGP provider interface for GoBGP.
 //
 // GoBGP operates as the overlay iBGP daemon in cosmos. It manages VPN sessions
-// (IPv4/IPv6 VPNUnicast) between overlay nodes. It runs with the TCP listener
-// disabled (ListenPort=-1) and only initiates outbound connections to its route
-// reflector on the standard BGP port 179.
+// (IPv4/IPv6 VPNUnicast) between overlay nodes. It listens on port 1790 (a
+// non-standard port that avoids conflicting with FRR on 179) and connects
+// outbound to peers also on port 1790.
 //
 // The implementation uses the GoBGP gRPC API (github.com/osrg/gobgp/v4/api)
 // exclusively. There is no fallback; if the daemon is unreachable, all calls
@@ -276,8 +276,11 @@ func buildPeer(spec provider.PeerSpec) *gobgpapi.Peer {
 			},
 		},
 		AfiSafis: buildAfiSafis(spec.Families),
+		// RemotePort 1790 matches GoBGP's own listen port so that GoBGP-to-GoBGP
+		// sessions establish. 1790 also avoids collision with FRR's port 179.
 		Transport: &gobgpapi.Transport{
 			PassiveMode: spec.Passive,
+			RemotePort:  1790,
 		},
 	}
 

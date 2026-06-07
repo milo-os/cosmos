@@ -37,7 +37,7 @@ func (s *stubProvider) Capabilities(_ context.Context) (provider.CapabilitySet, 
 // TestListenPortByDaemonType verifies that reconcileForProvider passes the
 // correct listen port to ConfigureSpeaker for each daemon type:
 //   - FRR   → 179   (standard BGP port; FRR owns the underlay)
-//   - GoBGP → -1    (listener disabled; GoBGP only dials outbound to its RR)
+//   - GoBGP → 1790  (non-standard port avoids conflict with FRR's 179)
 //   - other → 0     (switch default; zero value for int32)
 func TestListenPortByDaemonType(t *testing.T) {
 	tests := []struct {
@@ -45,7 +45,7 @@ func TestListenPortByDaemonType(t *testing.T) {
 		wantListenPort int32
 	}{
 		{daemonType: "FRR", wantListenPort: 179},
-		{daemonType: "GoBGP", wantListenPort: -1},
+		{daemonType: "GoBGP", wantListenPort: 1790},
 		{daemonType: "unknown", wantListenPort: 0},
 	}
 
