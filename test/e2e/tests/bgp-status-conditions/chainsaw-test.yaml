@@ -118,7 +118,7 @@ spec:
               spec:
                 instanceRef: instance-does-not-exist
                 prefixes:
-                  - 2001:db8:e2e:cond::/64
+                  - 2001:db8:e2e:c000::/64
               EOF
         - script:
             content: |

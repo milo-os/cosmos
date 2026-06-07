@@ -106,8 +106,6 @@ func (p *Provider) Capabilities(_ context.Context) (provider.CapabilitySet, erro
 // listen port. This method compares the running config against the desired
 // spec and restarts only when a change is detected.
 //
-// Note: GoBGP's listen port is 1790. The controller sets this per BGPInstance spec.
-// 1790 avoids conflict with FRR's 179 and matches the RemotePort used by peers.
 func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) (bool, error) {
 	// Probe current state.
 	resp, err := p.client.GetBgp(ctx, &gobgpapi.GetBgpRequest{})
