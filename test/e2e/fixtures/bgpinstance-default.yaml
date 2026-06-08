@@ -9,3 +9,5 @@ spec:
   addressFamilies:
     - afi: IPv6
       safi: Unicast
+  routeReflector:
+    clusterID: "10.255.255.1"

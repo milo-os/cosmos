@@ -295,7 +295,7 @@ func TestBuildPeer(t *testing.T) {
 		if peer.Timers.Config.KeepaliveInterval != 30 {
 			t.Errorf("KeepaliveInterval = %d, want 30", peer.Timers.Config.KeepaliveInterval)
 		}
-		// RemotePort 1790 matches GoBGP's listen port so GoBGP-to-GoBGP sessions establish.
+		// RemotePort 1790 targets the route reflector's listen port.
 		if peer.Transport.RemotePort != 1790 {
 			t.Errorf("Transport.RemotePort = %d, want 1790", peer.Transport.RemotePort)
 		}
