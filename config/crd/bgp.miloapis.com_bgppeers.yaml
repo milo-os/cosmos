@@ -182,6 +182,13 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              remotePort:
+                description: RemotePort is the TCP port to connect to on the remote
+                  peer. Defaults to 179 (standard BGP) when unset.
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               routeReflectorClient:
                 description: |-
                   RouteReflectorClient designates the remote peer as an RR client.

@@ -88,8 +88,9 @@ type AddressFamily struct {
 type SpeakerSpec struct {
 	ASNumber int64
 	RouterID string
-	// ListenPort is 179 for FRR (standard BGP port). GoBGP uses 1790 (non-standard
-	// port that avoids conflict with FRR on the same host).
+	// ListenPort is 179 for FRR (standard BGP port). For GoBGP, it is 1790 on the
+	// route reflector and -1 (listener disabled) on worker nodes, which only connect
+	// outbound to the RR.
 	ListenPort     int32
 	Families       []AddressFamily
 	Timers         TimerConfig
@@ -133,6 +134,8 @@ type PeerSpec struct {
 	TTLSecurity *int32
 	// Password is the plaintext BGP session password. Empty string means no password.
 	Password string
+	// RemotePort is the TCP port to connect to on the remote peer. 0 means use the default (179).
+	RemotePort int32
 }
 
 // AdvertisementSpec is the provider-level representation of BGPAdvertisement configuration.

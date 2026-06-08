@@ -295,9 +295,9 @@ func TestBuildPeer(t *testing.T) {
 		if peer.Timers.Config.KeepaliveInterval != 30 {
 			t.Errorf("KeepaliveInterval = %d, want 30", peer.Timers.Config.KeepaliveInterval)
 		}
-		// RemotePort 1790 matches GoBGP's listen port so GoBGP-to-GoBGP sessions establish.
-		if peer.Transport.RemotePort != 1790 {
-			t.Errorf("Transport.RemotePort = %d, want 1790", peer.Transport.RemotePort)
+		// No RemotePort set — must default to standard BGP port 179.
+		if peer.Transport.RemotePort != 179 {
+			t.Errorf("Transport.RemotePort = %d, want 179 (default)", peer.Transport.RemotePort)
 		}
 		// Optional fields must be nil when not specified.
 		if peer.EbgpMultihop != nil {
@@ -359,6 +359,38 @@ func TestBuildPeer(t *testing.T) {
 			t.Errorf("EbgpMultihop = %v, want nil", peer.EbgpMultihop)
 		}
 	})
+}
+
+func TestRemotePort(t *testing.T) {
+	tests := []struct {
+		port int32
+		want uint32
+	}{
+		{0, 179},    // unset → standard BGP default
+		{179, 179},  // explicit standard port
+		{1790, 1790}, // explicit GoBGP-to-GoBGP port
+		{443, 443},  // arbitrary explicit port
+	}
+	for _, tc := range tests {
+		got := remotePort(tc.port)
+		if got != tc.want {
+			t.Errorf("remotePort(%d) = %d, want %d", tc.port, got, tc.want)
+		}
+	}
+}
+
+// TestBuildPeerRemotePort verifies that buildPeer passes an explicit RemotePort
+// through to the GoBGP transport config unchanged.
+func TestBuildPeerRemotePort(t *testing.T) {
+	spec := provider.PeerSpec{
+		Address:    "2001:db8::1",
+		ASNumber:   64512,
+		RemotePort: 1790,
+	}
+	peer := buildPeer(spec)
+	if peer.Transport.RemotePort != 1790 {
+		t.Errorf("Transport.RemotePort = %d, want 1790", peer.Transport.RemotePort)
+	}
 }
 
 // TestAddPathInvalidCIDR verifies that addPath returns an error before making

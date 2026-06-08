@@ -125,7 +125,11 @@ func (r *InstanceReconciler) reconcileForProvider(
 	case "FRR":
 		listenPort = 179
 	case "GoBGP":
-		listenPort = 1790 // Non-standard port avoids conflict with FRR's 179 on the same host
+		if instance.Spec.RouteReflector != nil {
+			listenPort = 1790
+		} else {
+			listenPort = -1 // Disable listener; worker nodes connect outbound to the RR only
+		}
 	}
 
 	// Convert address families.

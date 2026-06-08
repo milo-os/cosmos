@@ -246,6 +246,7 @@ func (r *SessionReconciler) buildBGPPeer(
 			Timers:               session.Spec.Timers,
 			AllowAsIn:            session.Spec.AllowAsIn,
 			RouteReflectorClient: toPeer.RouteReflectorClient,
+			RemotePort:           toPeer.RemotePort,
 		},
 	}
 }

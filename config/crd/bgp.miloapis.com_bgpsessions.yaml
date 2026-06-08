@@ -186,6 +186,14 @@ spec:
                       description: InstanceRef is the BGPInstance name in this cluster
                         to use for the generated BGPPeer.
                       type: string
+                    remotePort:
+                      description: RemotePort is the TCP port to connect to on this
+                        peer. Passed through to the generated BGPPeer. Defaults to
+                        179 when unset.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
                     routeReflectorClient:
                       description: |-
                         RouteReflectorClient designates this peer as an RR client on the generated BGPPeer.

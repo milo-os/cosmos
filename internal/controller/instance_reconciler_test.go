@@ -36,21 +36,27 @@ func (s *stubProvider) Capabilities(_ context.Context) (provider.CapabilitySet, 
 
 // TestListenPortByDaemonType verifies that reconcileForProvider passes the
 // correct listen port to ConfigureSpeaker for each daemon type:
-//   - FRR   → 179   (standard BGP port; FRR owns the underlay)
-//   - GoBGP → 1790  (non-standard port avoids conflict with FRR's 179)
-//   - other → 0     (switch default; zero value for int32)
+//   - FRR                   → 179   (standard BGP port; FRR owns the underlay)
+//   - GoBGP/worker          → -1    (listener disabled; connects outbound to RR only)
+//   - GoBGP/route-reflector → 1790  (non-standard port avoids conflict with FRR's 179)
+//   - other                 → 0     (switch default; zero value for int32)
 func TestListenPortByDaemonType(t *testing.T) {
+	rrSpec := &bgpv1alpha1.RouteReflectorConfig{ClusterID: "1.0.0.1"}
+
 	tests := []struct {
+		name           string
 		daemonType     string
+		routeReflector *bgpv1alpha1.RouteReflectorConfig
 		wantListenPort int32
 	}{
-		{daemonType: "FRR", wantListenPort: 179},
-		{daemonType: "GoBGP", wantListenPort: 1790},
-		{daemonType: "unknown", wantListenPort: 0},
+		{name: "FRR", daemonType: "FRR", wantListenPort: 179},
+		{name: "GoBGP/worker", daemonType: "GoBGP", wantListenPort: -1},
+		{name: "GoBGP/route-reflector", daemonType: "GoBGP", routeReflector: rrSpec, wantListenPort: 1790},
+		{name: "unknown", daemonType: "unknown", wantListenPort: 0},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.daemonType, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			stub := &stubProvider{}
 			reg := provider.NewRegistry()
 			reg.Set("test-provider", stub)
@@ -61,6 +67,7 @@ func TestListenPortByDaemonType(t *testing.T) {
 					ASNumber:       64512,
 					RouterIDSource: "Manual",
 					RouterID:       "10.0.0.1",
+					RouteReflector: tc.routeReflector,
 					ProviderSelector: metav1.LabelSelector{
 						MatchLabels: map[string]string{"daemon": tc.daemonType},
 					},
@@ -92,7 +99,7 @@ func TestListenPortByDaemonType(t *testing.T) {
 
 			if stub.lastSpec.ListenPort != tc.wantListenPort {
 				t.Errorf("daemon %s: ListenPort = %d, want %d",
-					tc.daemonType, stub.lastSpec.ListenPort, tc.wantListenPort)
+					tc.name, stub.lastSpec.ListenPort, tc.wantListenPort)
 			}
 		})
 	}
