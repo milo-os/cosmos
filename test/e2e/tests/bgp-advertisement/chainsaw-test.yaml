@@ -46,6 +46,7 @@ spec:
                   - address: "${W2}"
                     asNumber: 65000
                     instanceRef: default
+                    remotePort: 1790
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast
@@ -69,6 +70,7 @@ spec:
                   - address: "${W1}"
                     asNumber: 65000
                     instanceRef: default
+                    remotePort: 1790
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast

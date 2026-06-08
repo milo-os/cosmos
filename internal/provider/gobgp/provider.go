@@ -262,6 +262,13 @@ func (p *Provider) DeletePolicy(ctx context.Context, policyName string) error {
 
 // --- internal helpers ---------------------------------------------------------
 
+func remotePort(port int32) uint32 {
+	if port == 0 {
+		return 179
+	}
+	return uint32(port)
+}
+
 // buildPeer converts a PeerSpec into a gobgpapi.Peer.
 func buildPeer(spec provider.PeerSpec) *gobgpapi.Peer {
 	peer := &gobgpapi.Peer{
@@ -276,10 +283,9 @@ func buildPeer(spec provider.PeerSpec) *gobgpapi.Peer {
 			},
 		},
 		AfiSafis: buildAfiSafis(spec.Families),
-		// RemotePort 1790 targets the route reflector's listen port.
 		Transport: &gobgpapi.Transport{
 			PassiveMode: spec.Passive,
-			RemotePort:  1790,
+			RemotePort:  remotePort(spec.RemotePort),
 		},
 	}
 

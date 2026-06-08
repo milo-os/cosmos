@@ -102,6 +102,14 @@ type BGPPeerSpec struct {
 	// +optional
 	TTLSecurity *int32 `json:"ttlSecurity,omitempty"`
 
+	// RemotePort is the TCP port to connect to on the remote peer.
+	// Defaults to 179 (standard BGP) when unset.
+	//
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	RemotePort *int32 `json:"remotePort,omitempty"`
+
 	// PasswordSecretRef references a Secret containing the BGP session password.
 	//
 	// +optional

@@ -100,6 +100,14 @@ type SessionPeer struct {
 	//
 	// +optional
 	RouteReflectorClient bool `json:"routeReflectorClient,omitempty"`
+
+	// RemotePort is the TCP port to connect to on this peer.
+	// Passed through to the generated BGPPeer. Defaults to 179 when unset.
+	//
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	RemotePort *int32 `json:"remotePort,omitempty"`
 }
 
 // BGPSessionStatus defines the observed state of BGPSession.

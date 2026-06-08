@@ -134,6 +134,8 @@ type PeerSpec struct {
 	TTLSecurity *int32
 	// Password is the plaintext BGP session password. Empty string means no password.
 	Password string
+	// RemotePort is the TCP port to connect to on the remote peer. 0 means use the default (179).
+	RemotePort int32
 }
 
 // AdvertisementSpec is the provider-level representation of BGPAdvertisement configuration.

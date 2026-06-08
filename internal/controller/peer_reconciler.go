@@ -197,6 +197,11 @@ func (r *PeerReconciler) reconcileForProvider(
 		sessionType = "iBGP"
 	}
 
+	var remotePort int32
+	if peer.Spec.RemotePort != nil {
+		remotePort = *peer.Spec.RemotePort
+	}
+
 	peerSpec := provider.PeerSpec{
 		Address:              peer.Spec.Address,
 		ASNumber:             peer.Spec.ASNumber,
@@ -208,6 +213,7 @@ func (r *PeerReconciler) reconcileForProvider(
 		EBGPMultihop:         peer.Spec.EBGPMultihop,
 		TTLSecurity:          peer.Spec.TTLSecurity,
 		Password:             password,
+		RemotePort:           remotePort,
 	}
 
 	impl, ok := r.Registry.Get(bp.Name)
