@@ -271,6 +271,7 @@ spec:
                                 enum:
                                 - IPv4
                                 - IPv6
+                                - L2VPN
                                 type: string
                               safi:
                                 description: SAFI is the Subsequent Address Family
@@ -278,6 +279,7 @@ spec:
                                 enum:
                                 - Unicast
                                 - VPNUnicast
+                                - EVPN
                                 type: string
                             required:
                             - afi

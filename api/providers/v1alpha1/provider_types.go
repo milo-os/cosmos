@@ -107,12 +107,12 @@ type ProviderCapabilities struct {
 type AddressFamilyCapability struct {
 	// AFI is the Address Family Identifier.
 	//
-	// +kubebuilder:validation:Enum=IPv4;IPv6
+	// +kubebuilder:validation:Enum=IPv4;IPv6;L2VPN
 	AFI string `json:"afi"`
 
 	// SAFI is the Subsequent Address Family Identifier.
 	//
-	// +kubebuilder:validation:Enum=Unicast;VPNUnicast
+	// +kubebuilder:validation:Enum=Unicast;VPNUnicast;EVPN
 	SAFI string `json:"safi"`
 }
 
