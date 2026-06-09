@@ -38,6 +38,7 @@ var GoBGPCapabilities = provider.CapabilitySet{
 	AddressFamilies: []provider.AddressFamily{
 		{AFI: "IPv4", SAFI: "VPNUnicast"},
 		{AFI: "IPv6", SAFI: "VPNUnicast"},
+		{AFI: "L2VPN", SAFI: "EVPN"},
 	},
 	RouteReflection: false,
 	BFD:             false,
@@ -351,6 +352,8 @@ func afiSafiFromStrings(afi, safi string) (gobgpapi.Family_Afi, gobgpapi.Family_
 	switch afi {
 	case "IPv4":
 		a = gobgpapi.Family_AFI_IP
+	case "L2VPN":
+		a = gobgpapi.Family_AFI_L2VPN
 	default: // "IPv6"
 		a = gobgpapi.Family_AFI_IP6
 	}
@@ -359,6 +362,8 @@ func afiSafiFromStrings(afi, safi string) (gobgpapi.Family_Afi, gobgpapi.Family_
 	switch safi {
 	case "VPNUnicast":
 		s = gobgpapi.Family_SAFI_MPLS_VPN
+	case "EVPN":
+		s = gobgpapi.Family_SAFI_EVPN
 	default: // "Unicast"
 		s = gobgpapi.Family_SAFI_UNICAST
 	}

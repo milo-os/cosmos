@@ -200,6 +200,7 @@ func TestAfiSafiFromStrings(t *testing.T) {
 		{"IPv6", "Unicast", gobgpapi.Family_AFI_IP6, gobgpapi.Family_SAFI_UNICAST},
 		{"IPv4", "VPNUnicast", gobgpapi.Family_AFI_IP, gobgpapi.Family_SAFI_MPLS_VPN},
 		{"IPv6", "VPNUnicast", gobgpapi.Family_AFI_IP6, gobgpapi.Family_SAFI_MPLS_VPN},
+		{"L2VPN", "EVPN", gobgpapi.Family_AFI_L2VPN, gobgpapi.Family_SAFI_EVPN},
 		// Unknown AFI falls back to IPv6 (default branch).
 		{"unknown", "Unicast", gobgpapi.Family_AFI_IP6, gobgpapi.Family_SAFI_UNICAST},
 		// Unknown SAFI falls back to Unicast (default branch).
@@ -272,6 +273,35 @@ func TestBuildAfiSafis(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("L2VPN EVPN family", func(t *testing.T) {
+		families := []provider.AddressFamily{
+			{AFI: "L2VPN", SAFI: "EVPN"},
+		}
+		result := buildAfiSafis(families)
+		if len(result) != 1 {
+			t.Fatalf("len = %d, want 1", len(result))
+		}
+		cfg := result[0].Config
+		if cfg.Family.Afi != gobgpapi.Family_AFI_L2VPN {
+			t.Errorf("AFI = %v, want AFI_L2VPN", cfg.Family.Afi)
+		}
+		if cfg.Family.Safi != gobgpapi.Family_SAFI_EVPN {
+			t.Errorf("SAFI = %v, want SAFI_EVPN", cfg.Family.Safi)
+		}
+		if !cfg.Enabled {
+			t.Error("Enabled = false, want true")
+		}
+	})
+}
+
+func TestGoBGPCapabilitiesContainEVPN(t *testing.T) {
+	for _, af := range GoBGPCapabilities.AddressFamilies {
+		if af.AFI == "L2VPN" && af.SAFI == "EVPN" {
+			return
+		}
+	}
+	t.Error("GoBGPCapabilities.AddressFamilies does not contain {L2VPN, EVPN}")
 }
 
 func TestBuildPeer(t *testing.T) {

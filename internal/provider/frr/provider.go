@@ -42,6 +42,7 @@ var FRRCapabilities = provider.CapabilitySet{
 		{AFI: "IPv6", SAFI: "Unicast"},
 		{AFI: "IPv4", SAFI: "VPNUnicast"},
 		{AFI: "IPv6", SAFI: "VPNUnicast"},
+		{AFI: "L2VPN", SAFI: "EVPN"},
 	},
 	RouteReflection: true,
 	BFD:             false,
@@ -461,6 +462,8 @@ func frrAFI(afi string) string {
 	switch afi {
 	case "IPv4":
 		return "ipv4"
+	case "L2VPN":
+		return "l2vpn"
 	default: // "IPv6"
 		return "ipv6"
 	}
@@ -471,6 +474,8 @@ func frrSAFI(safi string) string {
 	switch safi {
 	case "VPNUnicast":
 		return "vpn"
+	case "EVPN":
+		return "evpn"
 	default: // "Unicast"
 		return "unicast"
 	}
