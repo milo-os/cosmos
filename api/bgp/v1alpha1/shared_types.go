@@ -3,23 +3,25 @@ package v1alpha1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	AFIIPv4 = "IPv4"
-	AFIIPv6 = "IPv6"
+	AFIIPv4  = "IPv4"
+	AFIIPv6  = "IPv6"
+	AFIL2VPN = "L2VPN"
 
 	SAFIUnicast    = "Unicast"
 	SAFIVPNUnicast = "VPNUnicast"
+	SAFIEVPN       = "EVPN"
 )
 
 // AddressFamily represents a BGP address family (AFI/SAFI pair).
 type AddressFamily struct {
 	// AFI is the Address Family Identifier.
 	//
-	// +kubebuilder:validation:Enum=IPv4;IPv6
+	// +kubebuilder:validation:Enum=IPv4;IPv6;L2VPN
 	AFI string `json:"afi"`
 
 	// SAFI is the Subsequent Address Family Identifier.
 	//
-	// +kubebuilder:validation:Enum=Unicast;VPNUnicast
+	// +kubebuilder:validation:Enum=Unicast;VPNUnicast;EVPN
 	SAFI string `json:"safi"`
 }
 
