@@ -24,7 +24,7 @@ type BGPVRFInstance struct {
 
 // BGPVRFInstanceSpec defines the desired VRF configuration.
 //
-// +kubebuilder:validation:XValidation:rule="self.routeDistinguisher.matches('^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9]+):[0-9]+$')",message="routeDistinguisher must be in ASN:NN or IP:NN format"
+// +kubebuilder:validation:XValidation:rule="self.routeDistinguisher.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')",message="routeDistinguisher must be in ASN:NN or IP:NN format"
 type BGPVRFInstanceSpec struct {
 	// InstanceRef is the name of the BGPInstance this VRF is associated with.
 	// The referenced instance must have L2VPN/EVPN in its addressFamilies.
@@ -58,7 +58,7 @@ type BGPVRFInstanceSpec struct {
 
 // RouteTarget is a BGP extended community in "ASN:NN" or "IP:NN" format.
 //
-// +kubebuilder:validation:XValidation:rule="self.value.matches('^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9]+):[0-9]+$')",message="value must be in ASN:NN or IP:NN format"
+// +kubebuilder:validation:XValidation:rule="self.value.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')",message="value must be in ASN:NN or IP:NN format"
 type RouteTarget struct {
 	// Value is the route target extended community string.
 	// Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").

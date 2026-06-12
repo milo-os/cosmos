@@ -74,7 +74,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: value must be in ASN:NN or IP:NN format
-                    rule: self.value.matches('^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|[0-9]+):[0-9]+$')
+                    rule: self.value.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')
                 minItems: 1
                 type: array
               importRouteTargets:
@@ -97,7 +97,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: value must be in ASN:NN or IP:NN format
-                    rule: self.value.matches('^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|[0-9]+):[0-9]+$')
+                    rule: self.value.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')
                 minItems: 1
                 type: array
               instanceRef:
@@ -168,7 +168,7 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: routeDistinguisher must be in ASN:NN or IP:NN format
-              rule: self.routeDistinguisher.matches('^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|[0-9]+):[0-9]+$')
+              rule: self.routeDistinguisher.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')
           status:
             description: BGPVRFInstanceStatus defines the observed state of BGPVRFInstance.
             properties:
