@@ -4,25 +4,25 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgppeers.bgp.miloapis.com
+  name: bgpvrfinstances.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPPeer
-    listKind: BGPPeerList
-    plural: bgppeers
+    kind: BGPVRFInstance
+    listKind: BGPVRFInstanceList
+    plural: bgpvrfinstances
     shortNames:
-    - bgppr
-    singular: bgppeer
+    - bgpvrf
+    singular: bgpvrfinstance
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.address
-      name: Address
+    - jsonPath: .spec.routeDistinguisher
+      name: RD
       type: string
-    - jsonPath: .spec.asNumber
-      name: AS
-      type: integer
+    - jsonPath: .spec.instanceRef
+      name: Instance
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -30,9 +30,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          BGPPeer configures one side of a BGP session on matched providers.
-          Generated exclusively by SessionReconciler from BGPSession resources.
-          Never written directly.
+          BGPVRFInstance configures an L2VPN EVPN VRF on GoBGP providers matched by
+          spec.providerSelector. The referenced BGPInstance must have L2VPN/EVPN in
+          its addressFamilies.
         properties:
           apiVersion:
             description: |-
@@ -52,94 +52,63 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPPeerSpec defines the desired state of BGPPeer.
+            description: BGPVRFInstanceSpec defines the desired VRF configuration.
             properties:
-              address:
-                description: Address is the peer's BGP address.
-                format: ipv6
-                type: string
-              addressFamilies:
+              exportRouteTargets:
                 description: |-
-                  AddressFamilies overrides the instance address families for this peer.
-                  If absent, inherited from the referenced BGPInstance.
+                  ExportRouteTargets is the list of BGP extended community route targets
+                  attached to routes exported from this VRF.
+                  Format per entry: "ASN:NN" or "IP:NN".
                 items:
-                  description: AddressFamily represents a BGP address family (AFI/SAFI
-                    pair).
+                  description: RouteTarget is a BGP extended community in "ASN:NN"
+                    or "IP:NN" format.
                   properties:
-                    afi:
-                      description: AFI is the Address Family Identifier.
-                      enum:
-                      - IPv4
-                      - IPv6
-                      - L2VPN
-                      type: string
-                    safi:
-                      description: SAFI is the Subsequent Address Family Identifier.
-                      enum:
-                      - Unicast
-                      - VPNUnicast
-                      - EVPN
+                    value:
+                      description: |-
+                        Value is the route target extended community string.
+                        Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
+                      minLength: 1
                       type: string
                   required:
-                  - afi
-                  - safi
+                  - value
                   type: object
+                  x-kubernetes-validations:
+                  - message: value must be in ASN:NN or IP:NN format
+                    rule: self.value.matches('^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|[0-9]+):[0-9]+$')
+                minItems: 1
                 type: array
-              allowAsIn:
+              importRouteTargets:
                 description: |-
-                  AllowAsIn permits the peer's AS number to appear in received AS paths.
-                  Used on underlay eBGP sessions with a global AS.
-                format: int32
-                maximum: 10
-                minimum: 1
-                type: integer
-              asNumber:
-                description: ASNumber is the peer's autonomous system number.
-                format: int64
-                maximum: 4294967295
-                minimum: 1
-                type: integer
-              ebgpMultihop:
-                description: |-
-                  EBGPMultihop sets the eBGP multihop TTL.
-                  Mutually exclusive with ttlSecurity. Invalid on iBGP sessions.
-                format: int32
-                maximum: 255
-                minimum: 1
-                type: integer
+                  ImportRouteTargets is the list of BGP extended community route targets
+                  used to import routes into this VRF.
+                  Format per entry: "ASN:NN" or "IP:NN".
+                items:
+                  description: RouteTarget is a BGP extended community in "ASN:NN"
+                    or "IP:NN" format.
+                  properties:
+                    value:
+                      description: |-
+                        Value is the route target extended community string.
+                        Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
+                      minLength: 1
+                      type: string
+                  required:
+                  - value
+                  type: object
+                  x-kubernetes-validations:
+                  - message: value must be in ASN:NN or IP:NN format
+                    rule: self.value.matches('^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|[0-9]+):[0-9]+$')
+                minItems: 1
+                type: array
               instanceRef:
-                description: InstanceRef is the name of the BGPInstance for this peer
-                  session.
-                type: string
-              passive:
-                description: Passive enables passive mode — do not initiate the TCP
-                  connection.
-                type: boolean
-              passwordSecretRef:
-                description: PasswordSecretRef references a Secret containing the
-                  BGP session password.
-                properties:
-                  key:
-                    description: Key is the key within the Secret.
-                    type: string
-                  name:
-                    description: Name is the name of the Secret.
-                    type: string
-                required:
-                - key
-                - name
-                type: object
-              providerRef:
                 description: |-
-                  ProviderRef names a single BGPProvider.
-                  Use for topology-specific sessions (underlay eBGP, RR client designations).
-                  Mutually exclusive with providerSelector.
+                  InstanceRef is the name of the BGPInstance this VRF is associated with.
+                  The referenced instance must have L2VPN/EVPN in its addressFamilies.
                 type: string
               providerSelector:
                 description: |-
-                  ProviderSelector selects multiple BGPProvider resources.
-                  Use for cluster-wide sessions (e.g. all overlay providers peer with same RRs).
-                  Mutually exclusive with providerRef.
+                  ProviderSelector selects the BGPProvider resources to configure this VRF on.
+                  Only GoBGP providers support VRF configuration.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -184,61 +153,27 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              remotePort:
+              routeDistinguisher:
                 description: |-
-                  RemotePort is the TCP port to connect to on the remote peer.
-                  Defaults to 179 (standard BGP) when unset.
-                format: int32
-                maximum: 65535
-                minimum: 1
-                type: integer
-              routeReflectorClient:
-                description: |-
-                  RouteReflectorClient designates the remote peer as an RR client.
-                  Set on RR-side peers only. Never on client-side peers.
-                type: boolean
-              timers:
-                description: Timers overrides the instance timer defaults for this
-                  peer.
-                properties:
-                  holdTime:
-                    description: HoldTime overrides the instance default hold time.
-                    format: int32
-                    minimum: 3
-                    type: integer
-                  keepalive:
-                    description: Keepalive overrides the instance default keepalive
-                      interval.
-                    format: int32
-                    minimum: 1
-                    type: integer
-                type: object
-              ttlSecurity:
-                description: |-
-                  TTLSecurity sets the TTL security hop count.
-                  Mutually exclusive with ebgpMultihop.
-                format: int32
-                maximum: 254
-                minimum: 1
-                type: integer
+                  RouteDistinguisher uniquely identifies this VRF in the BGP control plane.
+                  Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
+                minLength: 1
+                type: string
             required:
-            - address
-            - asNumber
+            - exportRouteTargets
+            - importRouteTargets
             - instanceRef
+            - providerSelector
+            - routeDistinguisher
             type: object
             x-kubernetes-validations:
-            - message: exactly one of providerRef or providerSelector must be set
-              rule: has(self.providerRef) != has(self.providerSelector)
-            - message: ebgpMultihop and ttlSecurity are mutually exclusive
-              rule: '!(has(self.ebgpMultihop) && has(self.ttlSecurity))'
-            - message: passwordSecretRef requires both name and key
-              rule: '!has(self.passwordSecretRef) || (has(self.passwordSecretRef.name)
-                && has(self.passwordSecretRef.key))'
+            - message: routeDistinguisher must be in ASN:NN or IP:NN format
+              rule: self.routeDistinguisher.matches('^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|[0-9]+):[0-9]+$')
           status:
-            description: BGPPeerStatus defines the observed state of BGPPeer.
+            description: BGPVRFInstanceStatus defines the observed state of BGPVRFInstance.
             properties:
               conditions:
-                description: Conditions are top-level conditions for this BGPPeer.
+                description: Conditions are top-level conditions for this BGPVRFInstance.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
