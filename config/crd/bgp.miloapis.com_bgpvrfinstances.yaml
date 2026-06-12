@@ -67,6 +67,7 @@ spec:
                       description: |-
                         Value is the route target extended community string.
                         Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
+                      maxLength: 21
                       minLength: 1
                       type: string
                   required:
@@ -74,7 +75,8 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: value must be in ASN:NN or IP:NN format
-                    rule: self.value.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')
+                    rule: self.value.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')
+                maxItems: 32
                 minItems: 1
                 type: array
               importRouteTargets:
@@ -90,6 +92,7 @@ spec:
                       description: |-
                         Value is the route target extended community string.
                         Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
+                      maxLength: 21
                       minLength: 1
                       type: string
                   required:
@@ -97,7 +100,8 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: value must be in ASN:NN or IP:NN format
-                    rule: self.value.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')
+                    rule: self.value.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')
+                maxItems: 32
                 minItems: 1
                 type: array
               instanceRef:
@@ -157,6 +161,7 @@ spec:
                 description: |-
                   RouteDistinguisher uniquely identifies this VRF in the BGP control plane.
                   Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
+                maxLength: 21
                 minLength: 1
                 type: string
             required:
@@ -168,7 +173,7 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: routeDistinguisher must be in ASN:NN or IP:NN format
-              rule: self.routeDistinguisher.matches('^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+|[0-9]+):[0-9]+$')
+              rule: self.routeDistinguisher.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')
           status:
             description: BGPVRFInstanceStatus defines the observed state of BGPVRFInstance.
             properties:
