@@ -54,7 +54,7 @@ type ResolvedProviderConfig struct {
 	// +optional
 	RouterID string `json:"routerID,omitempty"`
 
-	// ListenPort is the port BGP listens on (179 for FRR, 0 for GoBGP which initiates only).
+	// ListenPort is the port the BGP speaker was configured to listen on.
 	// +optional
 	ListenPort *int32 `json:"listenPort,omitempty"`
 

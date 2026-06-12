@@ -64,6 +64,15 @@ type BGPInstanceSpec struct {
 	// +optional
 	BestPath *BestPathConfig `json:"bestPath,omitempty"`
 
+	// ListenPort is the TCP port the BGP speaker listens on for incoming sessions.
+	// Defaults to 179 (standard BGP port). Set to -1 to disable the listener
+	// entirely, which is appropriate for speakers that only initiate outbound sessions.
+	//
+	// +kubebuilder:default=179
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	ListenPort *int32 `json:"listenPort,omitempty"`
+
 	// RouteReflector configures this instance as a route reflector.
 	// Only valid in infra cluster role. Rejected in POP clusters.
 	//

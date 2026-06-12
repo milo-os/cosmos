@@ -119,17 +119,12 @@ func (r *InstanceReconciler) reconcileForProvider(
 			"RouterIDResolutionFailed", fmt.Sprintf("resolve router ID: %v", err))
 	}
 
-	// Determine listen port by daemon type.
-	var listenPort int32
-	switch bp.Spec.Type {
-	case "FRR":
-		listenPort = 179
-	case "GoBGP":
-		if instance.Spec.RouteReflector != nil {
-			listenPort = 1790
-		} else {
-			listenPort = -1 // Disable listener; worker nodes connect outbound to the RR only
-		}
+	// Determine listen port from spec. The API server applies the default (179)
+	// on admission so this is non-nil for all current objects; the fallback
+	// handles objects created before the default was introduced.
+	var listenPort int32 = 179
+	if instance.Spec.ListenPort != nil {
+		listenPort = *instance.Spec.ListenPort
 	}
 
 	// Convert address families.

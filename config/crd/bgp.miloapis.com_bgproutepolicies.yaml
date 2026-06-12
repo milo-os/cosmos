@@ -389,8 +389,8 @@ spec:
                           format: int64
                           type: integer
                         listenPort:
-                          description: ListenPort is the port BGP listens on (179
-                            for FRR, 0 for GoBGP which initiates only).
+                          description: ListenPort is the port the BGP speaker was
+                            configured to listen on.
                           format: int32
                           type: integer
                         passive:

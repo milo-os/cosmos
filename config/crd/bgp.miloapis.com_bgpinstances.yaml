@@ -97,6 +97,15 @@ spec:
                     description: DeterministicMed enables deterministic MED comparison.
                     type: boolean
                 type: object
+              listenPort:
+                default: 179
+                description: |-
+                  ListenPort is the TCP port the BGP speaker listens on for incoming sessions.
+                  Defaults to 179 (standard BGP port). Set to -1 to disable the listener
+                  entirely, which is appropriate for speakers that only initiate outbound sessions.
+                format: int32
+                maximum: 65535
+                type: integer
               providerSelector:
                 description: ProviderSelector selects BGPProvider resources this instance
                   configures.
@@ -383,8 +392,8 @@ spec:
                           format: int64
                           type: integer
                         listenPort:
-                          description: ListenPort is the port BGP listens on (179
-                            for FRR, 0 for GoBGP which initiates only).
+                          description: ListenPort is the port the BGP speaker was
+                            configured to listen on.
                           format: int32
                           type: integer
                         passive:
