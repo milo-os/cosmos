@@ -516,6 +516,36 @@ func TestConfigureSpeaker(t *testing.T) {
 		}
 	})
 
+	t.Run("running with mismatched ListenPort: stops then restarts", func(t *testing.T) {
+		fake := &fakeGoBgpClient{
+			getBgpFn: func(_ context.Context, _ *gobgpapi.GetBgpRequest, _ ...grpc.CallOption) (*gobgpapi.GetBgpResponse, error) {
+				return &gobgpapi.GetBgpResponse{Global: &gobgpapi.Global{
+					Asn: 64512, RouterId: "10.0.0.1", ListenPort: 179,
+				}}, nil
+			},
+		}
+		p := &Provider{client: fake}
+
+		restarted, err := p.ConfigureSpeaker(context.Background(), provider.SpeakerSpec{
+			ASNumber: 64512, RouterID: "10.0.0.1", ListenPort: 1790,
+		})
+		if err != nil {
+			t.Fatalf("ConfigureSpeaker: unexpected error: %v", err)
+		}
+		if !restarted {
+			t.Error("restarted = false, want true (ListenPort changed)")
+		}
+		if fake.stopBgpN != 1 {
+			t.Errorf("StopBgp called %d time(s), want 1", fake.stopBgpN)
+		}
+		if fake.startBgpReq == nil {
+			t.Fatal("StartBgp not called")
+		}
+		if fake.startBgpReq.Global.ListenPort != 1790 {
+			t.Errorf("StartBgp Global.ListenPort = %d, want 1790", fake.startBgpReq.Global.ListenPort)
+		}
+	})
+
 	t.Run("running with mismatched ASN: stops then restarts", func(t *testing.T) {
 		fake := &fakeGoBgpClient{
 			getBgpFn: func(_ context.Context, _ *gobgpapi.GetBgpRequest, _ ...grpc.CallOption) (*gobgpapi.GetBgpResponse, error) {

@@ -185,8 +185,9 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               remotePort:
-                description: RemotePort is the TCP port to connect to on the remote
-                  peer. Defaults to 179 (standard BGP) when unset.
+                description: |-
+                  RemotePort is the TCP port to connect to on the remote peer.
+                  Defaults to 179 (standard BGP) when unset.
                 format: int32
                 maximum: 65535
                 minimum: 1
@@ -414,8 +415,8 @@ spec:
                           format: int64
                           type: integer
                         listenPort:
-                          description: ListenPort is the port BGP listens on (179
-                            for FRR, 0 for GoBGP which initiates only).
+                          description: ListenPort is the port the BGP speaker was
+                            configured to listen on.
                           format: int32
                           type: integer
                         passive:
