@@ -29,9 +29,9 @@ collect_logs() {
   kubectl get pods -n bgp-system -o wide || true
   echo ""
   echo "=== Logs from bgp-system pods ==="
-  for POD in $(kubectl get pods -n bgp-system -l app.kubernetes.io/name=bgp -o name 2>/dev/null); do
+  for POD in $(kubectl get pods -n bgp-system -l app.kubernetes.io/name=cosmos -o name 2>/dev/null); do
     echo "--- $POD ---"
-    kubectl logs -n bgp-system "$POD" -c bgp --tail=500 2>/dev/null \
+    kubectl logs -n bgp-system "$POD" -c cosmos-operator --tail=500 2>/dev/null \
       | grep -v "bgp/config: resolved" | tail -50 || true
   done
   echo ""

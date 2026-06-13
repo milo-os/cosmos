@@ -41,6 +41,12 @@ tasks:
       - GOOS=linux go vet ./...
 
   test:
+    desc: Run unit tests then e2e tests
+    cmds:
+      - task: test:unit
+      - task: test:e2e
+
+  test:unit:
     desc: Run unit tests
     deps: [fmt, vet]
     cmds:
@@ -105,7 +111,7 @@ tasks:
       - scripts/ci.sh build
       - scripts/ci.sh e2e
 
-  test-e2e:
+  test:e2e:
     desc: Run the full E2E suite (create cluster, deploy, test, teardown)
     cmds:
       - scripts/ci.sh e2e

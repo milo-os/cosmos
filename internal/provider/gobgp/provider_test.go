@@ -396,10 +396,10 @@ func TestRemotePort(t *testing.T) {
 		port int32
 		want uint32
 	}{
-		{0, 179},    // unset → standard BGP default
-		{179, 179},  // explicit standard port
+		{0, 179},     // unset → standard BGP default
+		{179, 179},   // explicit standard port
 		{1790, 1790}, // explicit GoBGP-to-GoBGP port
-		{443, 443},  // arbitrary explicit port
+		{443, 443},   // arbitrary explicit port
 	}
 	for _, tc := range tests {
 		got := remotePort(tc.port)

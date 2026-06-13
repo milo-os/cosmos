@@ -150,10 +150,10 @@ For a complete walkthrough, see the [Getting Started guide](docs/getting-started
 
 ### VPC — `vpc.miloapis.com/v1alpha1`
 
-| Resource        | Description                                                   |
-|-----------------|---------------------------------------------------------------|
-| `VPC`           | Virtual network with one or more CIDR prefixes.               |
-| `VPCAttachment` | Binds a VPC to a named interface with assigned addresses.     |
+| Resource        | Short name | Description                                               |
+|-----------------|------------|-----------------------------------------------------------|
+| `VPC`           | —          | Virtual network with one or more CIDR prefixes.           |
+| `VPCAttachment` | —          | Binds a VPC to a named interface with assigned addresses. |
 
 ---
 
@@ -177,7 +177,8 @@ task tools
 | `task manifests`  | Regenerate CRD manifests from API types                              |
 | `task image`      | Build the container image                                            |
 | `task image-push` | Build and push the container image                                   |
-| `task test-e2e`   | Create a kind cluster, deploy, run the full E2E suite, and tear down |
+| `task test:unit`  | Run unit tests                                                       |
+| `task test:e2e`   | Create a kind cluster, deploy, run the full E2E suite, and tear down |
 | `task ci`         | Run the full CI pipeline locally (build, vet, unit tests, and e2e)  |
 | `task clean`      | Remove build artifacts and temporary files                           |
 
@@ -195,9 +196,9 @@ docker build -f build/Dockerfile -t ghcr.io/milo-os/cosmos:dev .
 ## Documentation
 
 - [Getting started](docs/getting-started.md) — deploy and establish your first BGP sessions
-- [API reference](docs/api/README.md) — full CRD field definitions, conditions, and operational contracts
-- [Service design](docs/design/) — architecture, controller internals, and design decisions
-- [Enhancements](docs/enhancements/) — accepted design proposals
+- [API reference](docs/api/README.md) — full CRD field definitions, conditions, and operational contracts for all API groups
+- [Service design](docs/design/) — original design proposal (archived; superseded by current API)
+- [Enhancements](docs/enhancements/) — design proposals
 
 ### Examples
 

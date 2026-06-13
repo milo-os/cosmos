@@ -6,7 +6,8 @@ metadata:
 data:
   # clusterRole controls which reconcilers are active on this node.
   # Valid values: pop, infra, management.
-  # pop and infra: run all reconcilers (ProviderReconciler, InstanceReconciler, PeerReconciler,
-  #   AdvertisementReconciler, RoutePolicyReconciler, SessionReconciler, ExternalPeerReconciler).
-  # management: run only SessionReconciler and ExternalPeerReconciler.
+  # pop and infra: ProviderReconciler, InstanceReconciler, PeerReconciler,
+  #   AdvertisementReconciler, RoutePolicyReconciler, SessionReconciler.
+  # management: SessionReconciler, ExternalPeerReconciler.
+  # SessionReconciler is active in all roles.
   clusterRole: pop

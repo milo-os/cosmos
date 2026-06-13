@@ -106,7 +106,6 @@ func (p *Provider) Capabilities(_ context.Context) (provider.CapabilitySet, erro
 // GoBGP requires StopBgp/StartBgp to change the AS number, router-ID, or
 // listen port. This method compares the running config against the desired
 // spec and restarts only when a change is detected.
-//
 func (p *Provider) ConfigureSpeaker(ctx context.Context, spec provider.SpeakerSpec) (bool, error) {
 	// Probe current state.
 	resp, err := p.client.GetBgp(ctx, &gobgpapi.GetBgpRequest{})

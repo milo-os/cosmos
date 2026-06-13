@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: bgp
+  name: cosmos
   namespace: bgp-system
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: bgp
+      app.kubernetes.io/name: cosmos
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: bgp
+        app.kubernetes.io/name: cosmos
     spec:
       serviceAccountName: bgp-operator
       affinity:
@@ -22,7 +22,7 @@ spec:
                     operator: DoesNotExist
       hostNetwork: true
       containers:
-        - name: bgp
+        - name: cosmos-operator
           image: ghcr.io/milo-os/cosmos:latest
           imagePullPolicy: IfNotPresent
           args:
@@ -33,8 +33,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: LOCAL_ENDPOINT
-              value: ""  # Must be set by overlay (e.g., "node-$(NODE_NAME)")
           securityContext:
             runAsNonRoot: true
             readOnlyRootFilesystem: true

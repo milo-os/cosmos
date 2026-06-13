@@ -139,7 +139,7 @@ tasks:
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.TASKFILE_DIR}}/overlay
       - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system wait
           --for=condition=Ready
-          pod -l app.kubernetes.io/name=bgp
+          pod -l app.kubernetes.io/name=cosmos
           --timeout=120s
       - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system wait
           --for=condition=Ready

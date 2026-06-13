@@ -28,10 +28,12 @@ func (p *peerRecordingProvider) DeletePeer(_ context.Context, _ string) error { 
 func (p *peerRecordingProvider) AddOrUpdateAdvertisement(_ context.Context, _ provider.AdvertisementSpec) error {
 	return nil
 }
-func (p *peerRecordingProvider) DeleteAdvertisement(_ context.Context, _ string) error            { return nil }
-func (p *peerRecordingProvider) AddOrUpdatePolicy(_ context.Context, _ provider.PolicySpec) error { return nil }
-func (p *peerRecordingProvider) DeletePolicy(_ context.Context, _ string) error                   { return nil }
-func (p *peerRecordingProvider) Ready(_ context.Context) error                                    { return nil }
+func (p *peerRecordingProvider) DeleteAdvertisement(_ context.Context, _ string) error { return nil }
+func (p *peerRecordingProvider) AddOrUpdatePolicy(_ context.Context, _ provider.PolicySpec) error {
+	return nil
+}
+func (p *peerRecordingProvider) DeletePolicy(_ context.Context, _ string) error { return nil }
+func (p *peerRecordingProvider) Ready(_ context.Context) error                  { return nil }
 func (p *peerRecordingProvider) Capabilities(_ context.Context) (provider.CapabilitySet, error) {
 	return provider.CapabilitySet{}, nil
 }

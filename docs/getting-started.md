@@ -172,7 +172,7 @@ kubectl apply -f overlay-instance.yaml
 
 > **Note:** The CNI plugin manages VRF instances and path injection on this
 > GoBGP instance independently. Do not use BGPAdvertisement for overlay routes.
-> See the Operational Contract in `docs/api/README.md` for the API ownership
+> See the Operational Contract in `docs/api/bgp.md` for the API ownership
 > boundary between cosmos and the CNI plugin.
 
 ---
@@ -326,14 +326,9 @@ kind: BGPAdvertisement
 metadata:
   name: node-1-loopback
 spec:
-  providerSelector:
-    matchLabels:
-      bgp.datum.net/plane: underlay
-      bgp.miloapis.com/daemon: frr
   instanceRef: underlay
   prefixes:
-    - cidr: "2001:db8:loopback::1/128"
-  localPref: 100
+    - "2001:db8:loopback::1/128"
 ```
 
 Apply:
