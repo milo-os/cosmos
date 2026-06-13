@@ -137,14 +137,8 @@ tasks:
     cmds:
       # Apply the overlay (namespace, RBAC, cosmos DaemonSet, gobgpd DaemonSet).
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.TASKFILE_DIR}}/overlay
-      - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system wait
-          --for=condition=Ready
-          pod -l app.kubernetes.io/name=cosmos
-          --timeout=120s
-      - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system wait
-          --for=condition=Ready
-          pod -l app.kubernetes.io/name=gobgpd
-          --timeout=120s
+      - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system rollout status daemonset/cosmos --timeout=120s
+      - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system rollout status daemonset/gobgpd --timeout=120s
 
   deploy-bgp-providers:
     desc: Apply BGPProvider manifests for each e2e worker node
