@@ -26,7 +26,6 @@ import (
 
 // PeerReconciler reconciles BGPPeer resources.
 // It resolves the BGPInstance, matches providers, and calls provider.AddOrUpdatePeer.
-//
 type PeerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme

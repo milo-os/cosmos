@@ -25,7 +25,6 @@ import (
 
 // AdvertisementReconciler reconciles BGPAdvertisement resources.
 // It injects prefixes into the RIB via provider.AddOrUpdateAdvertisement.
-//
 type AdvertisementReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme

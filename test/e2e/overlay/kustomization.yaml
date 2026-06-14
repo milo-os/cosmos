@@ -20,4 +20,3 @@ patches:
         value:
           - --metrics-addr=:8086
           - --health-addr=:8087
-          - --cluster-role=pop
