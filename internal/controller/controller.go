@@ -45,6 +45,9 @@ type Manager struct {
 	// Registry is the shared provider registry. All reconcilers look up provider
 	// implementations here. ProviderReconciler populates it at runtime.
 	Registry *provider.Registry
+	// Factory constructs provider implementations by daemon type and endpoint.
+	// Injected by the caller; cosmos ships no built-in provider implementations.
+	Factory ProviderFactory
 	// NodeName is the Kubernetes node name for this pod. Used by ProviderReconciler
 	// to scope reconciliation to BGPProvider resources on this node.
 	NodeName    string
@@ -63,6 +66,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 			Client:   mgr.GetClient(),
 			Scheme:   mgr.GetScheme(),
 			Registry: m.Registry,
+			Factory:  m.Factory,
 			NodeName: m.NodeName,
 		}
 		if err := providerReconciler.SetupWithManager(mgr); err != nil {

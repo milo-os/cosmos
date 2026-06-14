@@ -4,11 +4,8 @@ metadata:
   name: session-lifecycle
 spec:
   description: >
-    Verify the lifecycle of BGPSessions: sessions reach Established state and
-    GoBGP removes peers when sessions are deleted. Uses worker2 as the observed
-    node — its session targets worker3, and deletion is verified by watching the
-    generated BGPPeer disappear (the session finalizer cleans up GoBGP before
-    removing the BGPPeer resource).
+    Verify the lifecycle of BGPSessions: sessions reach PeersReconciled state
+    and the session finalizer cleans up generated BGPPeers on deletion.
   steps:
     - name: cleanup-stale
       try:
@@ -92,50 +89,6 @@ spec:
               status:
                 (conditions[?type=='PeersReconciled'].status | [0]): "True"
 
-    - name: assert-session-established
-      try:
-        - script:
-            content: |
-              set -e
-              GPOD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=gobgpd \
-                --field-selector spec.nodeName=bgp-e2e-worker2 \
-                -o jsonpath='{.items[0].metadata.name}')
-              echo "Waiting for GoBGP session in pod: $GPOD"
-
-              ATTEMPTS=0
-              ESTABLISHED=0
-              while [ "$ESTABLISHED" -lt 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
-                ESTABLISHED=$(kubectl -n bgp-system exec "$GPOD" -- \
-                  gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$ESTABLISHED" -lt 1 ] && sleep 5
-              done
-              if [ "$ESTABLISHED" -lt 1 ]; then
-                echo "ERROR: no BGP session reached Established on bgp-e2e-worker2"
-                kubectl -n bgp-system exec "$GPOD" -- gobgp neighbor || true
-                exit 1
-              fi
-              echo "OK: BGP session Established"
-
-    - name: verify-gobgp-peer-present
-      try:
-        - script:
-            content: |
-              set -e
-              # Get the IPv6 address of worker3 (the peer from worker2's perspective)
-              W3=$(kubectl get node bgp-e2e-worker3 \
-                -o jsonpath='{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
-                | grep ':' | head -1)
-              GPOD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=gobgpd \
-                --field-selector spec.nodeName=bgp-e2e-worker2 \
-                -o jsonpath='{.items[0].metadata.name}')
-              echo "Checking GoBGP peer $W3 in pod $GPOD (on bgp-e2e-worker2)"
-              kubectl -n bgp-system exec "$GPOD" -- \
-                gobgp neighbor | grep -q "${W3}"
-              echo "OK: peer $W3 present in GoBGP"
-
     - name: delete-session-and-verify-peer-removed
       try:
         - delete:
@@ -144,8 +97,7 @@ spec:
               kind: BGPSession
               name: e2e-lifecycle-w2
         # Wait for the generated BGPPeer to disappear. The session finalizer
-        # deletes all BGPPeers (triggering PeerReconciler GoBGP cleanup) before
-        # removing the finalizer, so "peer gone" means GoBGP cleanup completed.
+        # deletes all BGPPeers before removing the finalizer.
         - script:
             content: |
               set -e
@@ -163,7 +115,7 @@ spec:
                 kubectl get bgppeers -l bgp.miloapis.com/session-name=e2e-lifecycle-w2 -o yaml || true
                 exit 1
               fi
-              echo "OK: BGPPeers deleted (finalizer completed — GoBGP peer was removed)"
+              echo "OK: BGPPeers deleted (finalizer completed)"
 
       finally:
         - delete:

@@ -20,8 +20,6 @@ import (
 	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
 	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
 	"go.miloapis.com/cosmos/internal/provider"
-	frrprovider "go.miloapis.com/cosmos/internal/provider/frr"
-	gobgpprovider "go.miloapis.com/cosmos/internal/provider/gobgp"
 )
 
 const (
@@ -45,6 +43,10 @@ const (
 	providerHealthRequeue = 30 * time.Second
 )
 
+// ProviderFactory constructs a provider.Provider for the given daemon type and endpoint.
+// Callers are responsible for injecting implementations; cosmos ships no built-in providers.
+type ProviderFactory func(daemonType, endpoint string) (provider.Provider, error)
+
 // ProviderReconciler reconciles BGPProvider resources.
 // It auto-bootstraps local providers at startup and maintains provider health status.
 //
@@ -53,6 +55,7 @@ type ProviderReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Registry *provider.Registry
+	Factory  ProviderFactory
 	NodeName string // from NODE_NAME env var
 }
 
@@ -239,16 +242,12 @@ func (r *ProviderReconciler) setProviderCondition(
 	return ctrl.Result{RequeueAfter: providerHealthRequeue}, nil
 }
 
-// newProviderImpl creates the correct in-process provider implementation.
+// newProviderImpl delegates to the injected Factory to construct a provider.
 func (r *ProviderReconciler) newProviderImpl(bgpProvider *providersv1alpha1.BGPProvider, endpoint string) (provider.Provider, error) {
-	switch bgpProvider.Spec.Type {
-	case "FRR":
-		return frrprovider.New(endpoint), nil
-	case "GoBGP":
-		return gobgpprovider.New(endpoint)
-	default:
-		return nil, fmt.Errorf("unknown provider type %q", bgpProvider.Spec.Type)
+	if r.Factory == nil {
+		return nil, fmt.Errorf("no provider factory configured")
 	}
+	return r.Factory(bgpProvider.Spec.Type, endpoint)
 }
 
 // endpointFromSpec extracts the configured endpoint from a BGPProvider spec.

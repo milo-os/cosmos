@@ -5,9 +5,9 @@ metadata:
 spec:
   description: >
     Verify that BGPSessions targeting per-node BGPProviders produce BGPPeer
-    resources and that GoBGP sessions reach Established state across all three
-    worker nodes. Uses the provider/session model: one BGPSession per node with
-    the other two nodes as toPeers, forming a full mesh.
+    resources and that the session finalizer cleans them up on deletion.
+    Uses the provider/session model: one BGPSession per node with the other
+    two nodes as toPeers, forming a full mesh.
   steps:
     - name: cleanup-stale
       try:
@@ -37,28 +37,6 @@ spec:
                 --from-literal=worker2="${W2}" \
                 --from-literal=worker3="${W3}" \
                 --dry-run=client -o yaml | kubectl apply -f -
-
-    - name: wait-for-providers
-      try:
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              COUNT=0
-              while [ "$COUNT" -lt 3 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                COUNT=$(kubectl get bgpproviders \
-                  -l bgp.miloapis.com/daemon=GoBGP \
-                  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
-                  2>/dev/null | grep -c "^True$" || true)
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$COUNT" -lt 3 ] && sleep 2
-              done
-              if [ "$COUNT" -lt 3 ]; then
-                echo "ERROR: only $COUNT/3 GoBGP BGPProviders are Ready after ${ATTEMPTS} attempts"
-                kubectl get bgpproviders -o wide || true
-                exit 1
-              fi
-              echo "OK: $COUNT GoBGP BGPProviders Ready"
 
     - name: create-bgp-sessions
       try:
@@ -213,50 +191,6 @@ spec:
                 exit 1
               fi
               echo "OK: $COUNT BGPPeers created"
-
-    - name: assert-sessions-established
-      try:
-        # All three workers must have at least 2 established GoBGP sessions.
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              ALL_OK=0
-              while [ "$ALL_OK" -eq 0 ] && [ "$ATTEMPTS" -lt 60 ]; do
-                ALL_OK=1
-                for WORKER in bgp-e2e-worker bgp-e2e-worker2 bgp-e2e-worker3; do
-                  GPOD=$(kubectl -n bgp-system get pod \
-                    -l app.kubernetes.io/name=gobgpd \
-                    --field-selector "spec.nodeName=${WORKER}" \
-                    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-                  if [ -z "$GPOD" ]; then
-                    ALL_OK=0
-                    break
-                  fi
-                  ESTABLISHED=$(kubectl -n bgp-system exec "$GPOD" -- \
-                    gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
-                  if [ "$ESTABLISHED" -lt 2 ]; then
-                    ALL_OK=0
-                    break
-                  fi
-                done
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$ALL_OK" -eq 0 ] && sleep 5
-              done
-              if [ "$ALL_OK" -eq 0 ]; then
-                echo "ERROR: not all workers have 2+ established GoBGP sessions"
-                for WORKER in bgp-e2e-worker bgp-e2e-worker2 bgp-e2e-worker3; do
-                  GPOD=$(kubectl -n bgp-system get pod \
-                    -l app.kubernetes.io/name=gobgpd \
-                    --field-selector "spec.nodeName=${WORKER}" \
-                    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-                  echo "--- $WORKER ($GPOD) ---"
-                  [ -n "$GPOD" ] && kubectl -n bgp-system exec "$GPOD" -- \
-                    gobgp neighbor 2>/dev/null || true
-                done
-                exit 1
-              fi
-              echo "OK: all workers have 2+ established GoBGP sessions"
 
       finally:
         - delete:

@@ -3,12 +3,10 @@ module go.miloapis.com/cosmos
 go 1.26
 
 require (
-	github.com/osrg/gobgp/v4 v4.5.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/spf13/cobra v1.9.1
 	github.com/vishvananda/netlink v1.3.2-0.20250622222046-78aca1ace529
 	golang.org/x/sys v0.39.0
-	google.golang.org/grpc v1.79.3
 	k8s.io/api v0.33.0
 	k8s.io/apimachinery v0.33.0
 	k8s.io/client-go v0.33.0
@@ -56,7 +54,6 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
