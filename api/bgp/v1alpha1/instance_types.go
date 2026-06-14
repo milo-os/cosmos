@@ -74,7 +74,6 @@ type BGPInstanceSpec struct {
 	ListenPort *int32 `json:"listenPort,omitempty"`
 
 	// RouteReflector configures this instance as a route reflector.
-	// Only valid in infra cluster role. Rejected in POP clusters.
 	//
 	// +optional
 	RouteReflector *RouteReflectorConfig `json:"routeReflector,omitempty"`

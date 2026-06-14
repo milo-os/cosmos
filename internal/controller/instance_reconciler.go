@@ -28,14 +28,11 @@ import (
 // InstanceReconciler reconciles BGPInstance resources.
 // It resolves the router ID, derives per-provider speaker configuration, and calls
 // provider.ConfigureSpeaker for each matched BGPProvider.
-//
-// Active in: pop, infra.
 type InstanceReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	Registry    *provider.Registry
-	ClusterRole string
-	NodeName    string // from NODE_NAME env var
+	Scheme   *runtime.Scheme
+	Registry *provider.Registry
+	NodeName string // from NODE_NAME env var
 }
 
 // Reconcile handles BGPInstance events.
@@ -60,12 +57,6 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 		if err := r.Get(ctx, req.NamespacedName, &instance); err != nil {
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
-	}
-
-	// POP clusters may not host route reflectors.
-	if r.ClusterRole == "pop" && instance.Spec.RouteReflector != nil {
-		return r.setInstanceCondition(ctx, &instance, "RouteReflectorInPOPCluster", metav1.ConditionTrue,
-			"RouteReflectorInPOPCluster", "BGPInstance has routeReflector set but this is a POP cluster; remove routeReflector from spec")
 	}
 
 	// List providers matching providerSelector.

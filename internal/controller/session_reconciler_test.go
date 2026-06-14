@@ -77,10 +77,10 @@ func TestBuildBGPPeerPreservesMultipleFamilies(t *testing.T) {
 	}
 }
 
-// TestReconcilePopInfraGeneratesEVPNPeer is an end-to-end controller test that
-// runs reconcilePopInfra with an EVPN BGPSession and verifies that the generated
+// TestReconcileGeneratesEVPNPeer is an end-to-end controller test that
+// runs reconcile with an EVPN BGPSession and verifies that the generated
 // BGPPeer carries the L2VPN/EVPN address family.
-func TestReconcilePopInfraGeneratesEVPNPeer(t *testing.T) {
+func TestReconcileGeneratesEVPNPeer(t *testing.T) {
 	session := &bgpv1alpha1.BGPSession{
 		ObjectMeta: metav1.ObjectMeta{Name: "evpn-overlay"},
 		Spec: bgpv1alpha1.BGPSessionSpec{
@@ -115,8 +115,8 @@ func TestReconcilePopInfraGeneratesEVPNPeer(t *testing.T) {
 		Scheme: scheme,
 	}
 
-	if _, err := r.reconcilePopInfra(context.Background(), session); err != nil {
-		t.Fatalf("reconcilePopInfra: %v", err)
+	if _, err := r.reconcile(context.Background(), session); err != nil {
+		t.Fatalf("reconcile: %v", err)
 	}
 
 	var peerList bgpv1alpha1.BGPPeerList
