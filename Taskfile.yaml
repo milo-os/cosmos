@@ -10,9 +10,11 @@ vars:
   GOLANGCI_LINT: '{{.LOCALBIN}}/golangci-lint'
   CONTROLLER_GEN: '{{.LOCALBIN}}/controller-gen'
   CHAINSAW: '{{.LOCALBIN}}/chainsaw'
+  YAMLFMT: '{{.LOCALBIN}}/yamlfmt'
   GOLANGCI_LINT_VERSION: v2.1.6
   CONTROLLER_GEN_VERSION: v0.18.0
   CHAINSAW_VERSION: v0.2.12
+  YAMLFMT_VERSION: v0.21.0
   IMAGE_REGISTRY: ghcr.io/milo-os
   IMAGE_NAME: cosmos
   IMAGE_TAG:
@@ -53,16 +55,28 @@ tasks:
       - GOOS=linux go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
 
   lint:
-    desc: Run golangci-lint linter
-    deps: [golangci-lint]
+    desc: Run golangci-lint, yamlfmt, and yaml extension check
+    deps: [golangci-lint, yamlfmt]
     cmds:
       - '{{.GOLANGCI_LINT}} run'
+      - '{{.YAMLFMT}} -lint ./...'
+      - |
+        files=$(find . -name "*.yml" \
+          -not -path "./.git/*" \
+          -not -path "./bin/*" \
+          -not -path "./vendor/*")
+        if [ -n "$files" ]; then
+          echo "error: .yml files must use .yaml extension:"
+          echo "$files" | sed 's/^/  /'
+          exit 1
+        fi
 
   lint-fix:
-    desc: Run golangci-lint linter and perform fixes
-    deps: [golangci-lint]
+    desc: Run golangci-lint and yamlfmt with fixes
+    deps: [golangci-lint, yamlfmt]
     cmds:
       - '{{.GOLANGCI_LINT}} run --fix'
+      - '{{.YAMLFMT}} ./...'
 
   ##
   ## Build
@@ -106,15 +120,17 @@ tasks:
   ##
 
   ci:
-    desc: Run the full CI pipeline locally (build, vet, unit tests, and e2e)
+    desc: Run the full CI pipeline locally (build, lint, unit tests, and e2e)
     cmds:
-      - scripts/ci.sh build
-      - scripts/ci.sh e2e
+      - task: build
+      - task: lint
+      - task: test:unit
+      - task: test:e2e
 
   test:e2e:
     desc: Run the full E2E suite (create cluster, deploy, test, teardown)
     cmds:
-      - scripts/ci.sh e2e
+      - scripts/e2e.sh
 
   ##
   ## Cleanup
@@ -160,9 +176,19 @@ tasks:
           PACKAGE: github.com/kyverno/chainsaw
           VERSION: '{{.CHAINSAW_VERSION}}'
 
+  yamlfmt:
+    desc: Download yamlfmt locally if necessary
+    run: once
+    cmds:
+      - task: install-tool
+        vars:
+          TARGET: '{{.YAMLFMT}}'
+          PACKAGE: github.com/google/yamlfmt/cmd/yamlfmt
+          VERSION: '{{.YAMLFMT_VERSION}}'
+
   tools:
     desc: Install all development tools
-    deps: [golangci-lint, controller-gen, chainsaw]
+    deps: [golangci-lint, controller-gen, chainsaw, yamlfmt]
 
   install-tool:
     internal: true

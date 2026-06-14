@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GO_VERSION: '1.26'
 
@@ -13,12 +17,16 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Install task
         uses: arduino/setup-task@v2
@@ -26,14 +34,15 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build, Vet, and Unit Test
-        run: task test:unit
+      - name: Build
+        run: task build
 
-  e2e:
-    name: E2E Tests
+  test:
+    name: Unit Tests
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -41,11 +50,70 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unit Tests
+        run: task test:unit
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint
+        run: task lint
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Install kind
         run: |
           go install sigs.k8s.io/kind@latest
           kind version
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
 
       - name: Install task
         uses: arduino/setup-task@v2
