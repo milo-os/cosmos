@@ -5,8 +5,6 @@ import (
 )
 
 // BGPPeer configures one side of a BGP session on matched providers.
-// Generated exclusively by SessionReconciler from BGPSession resources.
-// Never written directly.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

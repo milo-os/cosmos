@@ -36,7 +36,7 @@ collect_logs() {
   kubectl get nodes -o wide || true
   echo ""
   echo "=== BGP resources ==="
-  kubectl get bgpinstances,bgpadvertisements,bgpsessions,bgproutepolicies,bgpexternalpeers,bgppeers,bgpproviders \
+  kubectl get bgpinstances,bgpadvertisements,bgproutepolicies,bgpexternalpeers,bgppeers,bgpproviders \
     --all-namespaces 2>/dev/null || true
   echo ""
   echo "=== VPC resources ==="

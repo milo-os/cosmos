@@ -12,11 +12,11 @@ spec:
       try:
         - script:
             content: |
-              kubectl delete bgpsession e2e-adv-w1 e2e-adv-w2 2>/dev/null || true
+              kubectl delete bgppeers -l e2e-test=bgp-advertisement 2>/dev/null || true
               kubectl delete bgpadvertisement e2e-test-prefix 2>/dev/null || true
               echo "OK: stale resources cleaned up"
 
-    - name: setup-sessions
+    - name: setup-peers
       try:
         - script:
             content: |
@@ -31,22 +31,20 @@ spec:
 
               kubectl apply -f - <<EOF
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
+              kind: BGPPeer
               metadata:
-                name: e2e-adv-w1
+                name: e2e-adv-w1-to-w2
                 labels:
                   e2e-test: bgp-advertisement
               spec:
-                fromProviderSelector:
+                instanceRef: default
+                providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker
                     bgp.miloapis.com/daemon: GoBGP
-                fromInstanceRef: default
-                toPeers:
-                  - address: "${W2}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
+                address: "${W2}"
+                asNumber: 65000
+                remotePort: 1790
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast
@@ -55,22 +53,20 @@ spec:
                   keepalive: 10
               ---
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
+              kind: BGPPeer
               metadata:
-                name: e2e-adv-w2
+                name: e2e-adv-w2-to-w1
                 labels:
                   e2e-test: bgp-advertisement
               spec:
-                fromProviderSelector:
+                instanceRef: default
+                providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker2
                     bgp.miloapis.com/daemon: GoBGP
-                fromInstanceRef: default
-                toPeers:
-                  - address: "${W1}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
+                address: "${W1}"
+                asNumber: 65000
+                remotePort: 1790
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast
@@ -121,13 +117,6 @@ spec:
               echo "OK: BGPAdvertisement deleted"
 
       finally:
-        - delete:
-            ref:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
-              name: e2e-adv-w1
-        - delete:
-            ref:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
-              name: e2e-adv-w2
+        - script:
+            content: |
+              kubectl delete bgppeers -l e2e-test=bgp-advertisement 2>/dev/null || true

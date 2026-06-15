@@ -524,7 +524,7 @@ and clusters. Cluster-scoped resources reflect the actual topology boundary.
 |---------|-------------|------------|------------|---------|
 | CNI dependency | None | Cilium | Calico | None |
 | Topology awareness | None (by design) | Node-centric | Node-centric | LoadBalancer-centric |
-| Session model | CRD (`BGPSession`) | ConfigMap | `BGPPeer` CRD | `BGPPeer` CRD |
+| Session model | CRD (`BGPPeer`) | ConfigMap | `BGPPeer` CRD | `BGPPeer` CRD |
 | Advertisement model | `BGPAdvertisement` CRD | Auto from services | Auto from pods/services | Auto from services |
 | Route filtering | `BGPRoutePolicy` CRD | Policy CRD | `BGPFilter` CRD | Limited |
 | Route-reflector support | `BGPPeeringPolicy` CRD | Yes | Yes | No |

@@ -105,7 +105,6 @@ tasks:
           --for=condition=Established
           crd/bgpinstances.bgp.miloapis.com
           crd/bgpadvertisements.bgp.miloapis.com
-          crd/bgpsessions.bgp.miloapis.com
           crd/bgproutepolicies.bgp.miloapis.com
           crd/bgpexternalpeers.bgp.miloapis.com
           crd/bgppeers.bgp.miloapis.com

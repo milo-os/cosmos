@@ -6,7 +6,6 @@ resources:
   - bgp.miloapis.com_bgppeers.yaml
   - bgp.miloapis.com_bgpadvertisements.yaml
   - bgp.miloapis.com_bgproutepolicies.yaml
-  - bgp.miloapis.com_bgpsessions.yaml
   - bgp.miloapis.com_bgpexternalpeers.yaml
   - bgp.miloapis.com_bgpvrfinstances.yaml
   - vpc.miloapis.com_vpcs.yaml

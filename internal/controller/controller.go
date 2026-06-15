@@ -100,13 +100,6 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("setup RoutePolicyReconciler: %w", err)
 	}
 
-	if err := (&SessionReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("setup SessionReconciler: %w", err)
-	}
-
 	if err := (&ExternalPeerReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
