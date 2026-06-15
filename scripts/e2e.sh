@@ -5,15 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 E2E_CLUSTER_NAME="bgp-e2e"
 
-usage() {
-  echo "usage: $(basename "$0") <command>"
-  echo ""
-  echo "commands:"
-  echo "  build   build, vet, and unit test"
-  echo "  e2e     run the full e2e suite"
-  exit 1
-}
-
 require_tool() {
   local tool="$1"
   local hint="$2"
@@ -52,47 +43,27 @@ collect_logs() {
   kubectl get vpcs,vpcattachments --all-namespaces 2>/dev/null || true
 }
 
-cmd_build() {
-  echo "=== Build ==="
-  go build ./...
+require_tool kind     "go install sigs.k8s.io/kind@latest"
+require_tool kubectl  "https://kubernetes.io/docs/tasks/tools/"
+require_tool task     "https://taskfile.dev/installation/"
+require_tool chainsaw "https://github.com/kyverno/chainsaw/releases/tag/v0.2.12"
+require_tool helm     "https://helm.sh/docs/intro/install/"
 
-  echo "=== Vet ==="
-  go vet ./...
+E2E_DIR="${REPO_ROOT}/test/e2e"
+export KUBECONFIG="${E2E_DIR}/.kubeconfig"
 
-  echo "=== Unit Tests ==="
-  go test ./...
+on_exit() {
+  local exit_code=$?
+  if [ "${exit_code}" -ne 0 ]; then
+    echo "=== E2E failed — collecting diagnostic logs ==="
+    collect_logs
+  fi
+  echo "=== Deleting kind cluster ==="
+  kind delete cluster --name "${E2E_CLUSTER_NAME}" || true
+  exit "${exit_code}"
 }
+trap on_exit EXIT
 
-cmd_e2e() {
-  local e2e_dir="${REPO_ROOT}/test/e2e"
-
-  require_tool kind     "go install sigs.k8s.io/kind@latest"
-  require_tool kubectl  "https://kubernetes.io/docs/tasks/tools/"
-  require_tool task     "https://taskfile.dev/installation/"
-  require_tool chainsaw "https://github.com/kyverno/chainsaw/releases/tag/v0.2.12"
-  require_tool helm     "https://helm.sh/docs/intro/install/"
-
-  export KUBECONFIG="${e2e_dir}/.kubeconfig"
-
-  on_exit() {
-    local exit_code=$?
-    if [ "${exit_code}" -ne 0 ]; then
-      echo "=== E2E failed — collecting diagnostic logs ==="
-      collect_logs
-    fi
-    echo "=== Deleting kind cluster ==="
-    kind delete cluster --name "${E2E_CLUSTER_NAME}" || true
-    exit "${exit_code}"
-  }
-  trap on_exit EXIT
-
-  echo "=== Running E2E suite ==="
-  cd "${e2e_dir}"
-  task default
-}
-
-case "${1:-}" in
-  build) cd "${REPO_ROOT}" && cmd_build ;;
-  e2e)   cmd_e2e ;;
-  *)     usage ;;
-esac
+echo "=== Running E2E suite ==="
+cd "${E2E_DIR}"
+task default
