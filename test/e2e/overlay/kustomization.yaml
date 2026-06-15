@@ -4,15 +4,10 @@ kind: Kustomization
 # Base deploy resources: namespace, RBAC, DaemonSet
 resources:
   - ../../../config/deploy
-  - gobgpd-config.yaml
-  - gobgpd-daemonset.yaml
 
 # Override image tags for local e2e builds
 images:
   - name: ghcr.io/milo-os/cosmos
-    newTag: e2e-local
-  - name: gobgpd:e2e-local
-    newName: gobgpd
     newTag: e2e-local
 
 patches:

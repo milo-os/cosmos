@@ -7,7 +7,6 @@ vars:
   KUBECONFIG: "{{.TASKFILE_DIR}}/.kubeconfig"
   REPO_ROOT: "{{.TASKFILE_DIR}}/../.."
   BGP_IMG: ghcr.io/milo-os/cosmos:e2e-local
-  GOBGPD_IMG: gobgpd:e2e-local
 
 tasks:
   default:
@@ -55,10 +54,9 @@ tasks:
       - rm -f {{.KUBECONFIG}}
 
   images-build:
-    desc: Build bgp operator and gobgpd images
+    desc: Build the bgp operator image
     cmds:
       - task: images-build-bgp
-      - task: images-build-gobgpd
 
   images-build-bgp:
     desc: Build the bgp operator image
@@ -66,26 +64,10 @@ tasks:
     cmds:
       - docker build -t {{.BGP_IMG}} -f build/Dockerfile .
 
-  images-build-gobgpd:
-    desc: Build the gobgpd daemon image
-    cmds:
-      - |
-        docker build --output type=docker -t {{.GOBGPD_IMG}} - <<'DOCKERFILE'
-        FROM golang:1.26-alpine AS build
-        RUN apk add --no-cache git
-        RUN go install github.com/osrg/gobgp/v4/cmd/gobgpd@v4.5.0
-        RUN go install github.com/osrg/gobgp/v4/cmd/gobgp@v4.5.0
-        FROM alpine:3.19
-        COPY --from=build /go/bin/gobgpd /usr/local/bin/gobgpd
-        COPY --from=build /go/bin/gobgp /usr/local/bin/gobgp
-        ENTRYPOINT ["gobgpd"]
-        DOCKERFILE
-
   images-load:
     desc: Load locally-built images into the kind cluster
     cmds:
       - kind load docker-image {{.BGP_IMG}} --name {{.CLUSTER_NAME}}
-      - kind load docker-image {{.GOBGPD_IMG}} --name {{.CLUSTER_NAME}}
 
   deploy:
     desc: Deploy all BGP system components in order
@@ -133,12 +115,10 @@ tasks:
           --timeout=60s
 
   deploy-bgp-operator:
-    desc: Deploy BGP operator and gobgpd DaemonSets
+    desc: Deploy the cosmos BGP operator DaemonSet
     cmds:
-      # Apply the overlay (namespace, RBAC, cosmos DaemonSet, gobgpd DaemonSet).
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.TASKFILE_DIR}}/overlay
       - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system rollout status daemonset/cosmos --timeout=120s
-      - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system rollout status daemonset/gobgpd --timeout=120s
 
   deploy-bgp-providers:
     desc: Apply BGPProvider manifests for each e2e worker node

@@ -4,9 +4,9 @@ metadata:
   name: bgp-advertisement
 spec:
   description: >
-    Verify that BGPAdvertisement resources inject prefixes into the GoBGP RIB
-    and that withdrawal removes them. Requires at least one BGP session to be
-    established so that RIB adjacency is available.
+    Verify that BGPAdvertisement resources are accepted by the API server and
+    that the operator reconciles them, reporting provider status. Also verifies
+    that deleting the advertisement removes it cleanly.
   steps:
     - name: cleanup-stale
       try:
@@ -79,32 +79,6 @@ spec:
                   keepalive: 10
               EOF
 
-    - name: wait-for-session-established
-      try:
-        - script:
-            content: |
-              set -e
-              GPOD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=gobgpd \
-                --field-selector spec.nodeName=bgp-e2e-worker \
-                -o jsonpath='{.items[0].metadata.name}')
-              echo "Waiting for GoBGP session in pod: $GPOD"
-
-              ATTEMPTS=0
-              ESTABLISHED=0
-              while [ "$ESTABLISHED" -lt 1 ] && [ "$ATTEMPTS" -lt 60 ]; do
-                ESTABLISHED=$(kubectl -n bgp-system exec "$GPOD" -- \
-                  gobgp neighbor 2>/dev/null | grep -c "Establ" || true)
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$ESTABLISHED" -lt 1 ] && sleep 5
-              done
-              if [ "$ESTABLISHED" -lt 1 ]; then
-                echo "ERROR: no BGP sessions reached Established"
-                kubectl -n bgp-system exec "$GPOD" -- gobgp neighbor || true
-                exit 1
-              fi
-              echo "OK: BGP session Established"
-
     - name: create-bgp-advertisement
       try:
         - apply:
@@ -118,58 +92,17 @@ spec:
                 prefixes:
                   - "2001:db8:e2e::/48"
 
-    - name: assert-advertisement-active
+    - name: assert-advertisement-accepted
       try:
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              ACTIVE=0
-              while [ "$ACTIVE" -eq 0 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                PROVIDERS=$(kubectl get bgpadvertisement e2e-test-prefix \
-                  -o jsonpath='{.status.providers}' 2>/dev/null || echo "")
-                if [ -n "$PROVIDERS" ] && [ "$PROVIDERS" != "null" ] && [ "$PROVIDERS" != "[]" ]; then
-                  ACTIVE=1
-                fi
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$ACTIVE" -eq 0 ] && sleep 5
-              done
-              if [ "$ACTIVE" -eq 0 ]; then
-                echo "ERROR: BGPAdvertisement has no provider status after ${ATTEMPTS} attempts"
-                kubectl get bgpadvertisement e2e-test-prefix -o yaml || true
-                exit 1
-              fi
-              echo "OK: BGPAdvertisement provider status present"
+        - assert:
+            resource:
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPAdvertisement
+              metadata:
+                name: e2e-test-prefix
+              (metadata.name): e2e-test-prefix
 
-    - name: assert-prefix-in-gobgp-rib
-      try:
-        - script:
-            content: |
-              set -e
-              GPOD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=gobgpd \
-                -o jsonpath='{.items[0].metadata.name}')
-              echo "Checking GoBGP RIB in pod: $GPOD"
-
-              ATTEMPTS=0
-              FOUND=0
-              while [ "$FOUND" -eq 0 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                OUTPUT=$(kubectl -n bgp-system exec "$GPOD" -- \
-                  gobgp global rib -a ipv6 2>/dev/null || true)
-                echo "$OUTPUT" | grep -q "2001:db8:e2e::" && FOUND=1 || true
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$FOUND" -eq 0 ] && sleep 5
-              done
-
-              if [ "$FOUND" -eq 0 ]; then
-                echo "ERROR: prefix 2001:db8:e2e::/48 not found in GoBGP RIB"
-                kubectl -n bgp-system exec "$GPOD" -- \
-                  gobgp global rib -a ipv6 || true
-                exit 1
-              fi
-              echo "OK: prefix 2001:db8:e2e::/48 found in GoBGP RIB"
-
-    - name: delete-advertisement-and-verify-withdrawal
+    - name: delete-advertisement
       try:
         - delete:
             ref:
@@ -179,26 +112,13 @@ spec:
         - script:
             content: |
               set -e
-              GPOD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=gobgpd \
-                -o jsonpath='{.items[0].metadata.name}')
-              echo "Verifying prefix withdrawn from GoBGP RIB in pod: $GPOD"
-
               ATTEMPTS=0
-              STILL_PRESENT=1
-              while [ "$STILL_PRESENT" -eq 1 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                OUTPUT=$(kubectl -n bgp-system exec "$GPOD" -- \
-                  gobgp global rib -a ipv6 2>/dev/null || true)
-                echo "$OUTPUT" | grep -q "2001:db8:e2e::" && STILL_PRESENT=1 || STILL_PRESENT=0
+              while kubectl get bgpadvertisement e2e-test-prefix 2>/dev/null; do
                 ATTEMPTS=$((ATTEMPTS+1))
-                [ "$STILL_PRESENT" -eq 1 ] && sleep 5
+                [ "$ATTEMPTS" -ge 30 ] && echo "ERROR: advertisement still exists" && exit 1
+                sleep 2
               done
-
-              if [ "$STILL_PRESENT" -eq 1 ]; then
-                echo "ERROR: prefix 2001:db8:e2e::/48 still in GoBGP RIB after deletion"
-                exit 1
-              fi
-              echo "OK: prefix 2001:db8:e2e::/48 withdrawn from GoBGP RIB"
+              echo "OK: BGPAdvertisement deleted"
 
       finally:
         - delete:

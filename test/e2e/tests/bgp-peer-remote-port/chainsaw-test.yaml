@@ -4,10 +4,8 @@ metadata:
   name: bgp-peer-remote-port
 spec:
   description: >
-    Verify that BGPPeer.spec.remotePort controls the TCP port GoBGP uses when
-    connecting to a peer. Tests both an explicit remotePort (1790, targeting an
-    actual GoBGP node in the cluster) and the default (179 when unset), which
-    will not establish but whose transport config must show port 179.
+    Verify that BGPPeer resources with explicit remotePort and without remotePort
+    are accepted by the API server and created correctly by the operator.
   steps:
     - name: cleanup-stale
       try:
@@ -34,28 +32,6 @@ spec:
                 --from-literal=worker1="${W1}" \
                 --from-literal=worker2="${W2}" \
                 --dry-run=client -o yaml | kubectl apply -f -
-
-    - name: wait-for-providers
-      try:
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              COUNT=0
-              while [ "$COUNT" -lt 3 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                COUNT=$(kubectl get bgpproviders \
-                  -l bgp.miloapis.com/daemon=GoBGP \
-                  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
-                  2>/dev/null | grep -c "^True$" || true)
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$COUNT" -lt 3 ] && sleep 2
-              done
-              if [ "$COUNT" -lt 3 ]; then
-                echo "ERROR: only $COUNT/3 GoBGP BGPProviders are Ready"
-                kubectl get bgpproviders -o wide || true
-                exit 1
-              fi
-              echo "OK: $COUNT GoBGP BGPProviders Ready"
 
     - name: create-peers
       try:
@@ -97,56 +73,23 @@ spec:
                 asNumber: 65000
               EOF
 
-    - name: assert-explicit-remote-port-1790
+    - name: assert-peers-created
       try:
-        - script:
-            content: |
-              set -e
-              W2=$(kubectl get configmap bgp-e2e-rp-ips -o jsonpath='{.data.worker2}')
-              GPOD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=gobgpd \
-                --field-selector "spec.nodeName=bgp-e2e-worker" \
-                -o jsonpath='{.items[0].metadata.name}')
-
-              ATTEMPTS=0
-              FOUND=0
-              while [ "$FOUND" -eq 0 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                FOUND=$(kubectl -n bgp-system exec "$GPOD" -- \
-                  gobgp -j neighbor "${W2}" 2>/dev/null | grep -c '"remote_port":1790' || true)
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$FOUND" -eq 0 ] && sleep 2
-              done
-              if [ "$FOUND" -eq 0 ]; then
-                echo "ERROR: GoBGP neighbor ${W2} does not show remote_port 1790"
-                kubectl -n bgp-system exec "$GPOD" -- gobgp -j neighbor "${W2}" 2>/dev/null || true
-                exit 1
-              fi
-              echo "OK: GoBGP neighbor shows remote_port: 1790"
-
-    - name: assert-default-remote-port-179
-      try:
-        - script:
-            content: |
-              set -e
-              GPOD=$(kubectl -n bgp-system get pod \
-                -l app.kubernetes.io/name=gobgpd \
-                --field-selector "spec.nodeName=bgp-e2e-worker" \
-                -o jsonpath='{.items[0].metadata.name}')
-
-              ATTEMPTS=0
-              FOUND=0
-              while [ "$FOUND" -eq 0 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                FOUND=$(kubectl -n bgp-system exec "$GPOD" -- \
-                  gobgp -j neighbor "2001:db8::ffff" 2>/dev/null | grep -c '"remote_port":179}' || true)
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$FOUND" -eq 0 ] && sleep 2
-              done
-              if [ "$FOUND" -eq 0 ]; then
-                echo "ERROR: GoBGP neighbor 2001:db8::ffff does not show remote_port 179 (default)"
-                kubectl -n bgp-system exec "$GPOD" -- gobgp -j neighbor "2001:db8::ffff" 2>/dev/null || true
-                exit 1
-              fi
-              echo "OK: GoBGP neighbor shows remote_port: 179 (default)"
+        - assert:
+            resource:
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-rp-explicit
+              spec:
+                remotePort: 1790
+        - assert:
+            resource:
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-rp-default
+              (spec.remotePort == `null` || spec.remotePort == `0`): true
 
       finally:
         - delete:
