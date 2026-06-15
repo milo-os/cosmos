@@ -31,7 +31,7 @@ import (
 type InstanceReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Registry *provider.Registry
+	Pool     *provider.Pool
 	NodeName string // from NODE_NAME env var
 }
 
@@ -94,13 +94,13 @@ func (r *InstanceReconciler) reconcileForProvider(
 	instance *bgpv1alpha1.BGPInstance,
 	bp *providersv1alpha1.BGPProvider,
 ) error {
-	impl, ok := r.Registry.Get(bp.Name)
+	impl, ok := r.Pool.GetByName(bp.Name)
 	if !ok {
 		if r.NodeName != "" && bp.Labels[LabelNode] != r.NodeName {
 			return nil
 		}
 		return r.writeInstanceProviderStatus(ctx, instance, bp.Name, bp.Spec.Type, false,
-			"DaemonUnavailable", "provider not in registry — daemon may be starting")
+			"DaemonUnavailable", "provider not in pool — daemon may be starting")
 	}
 
 	// Derive router ID.

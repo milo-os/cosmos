@@ -1,26 +1,12 @@
 // Package provider defines the BGP provider interface for cosmos.
 //
-// EVOLUTION NOTE (Option B — out-of-process gRPC providers):
+// All BGP providers are remote agents reached via gRPC. The Pool manages
+// connections keyed by endpoint; reconcilers look up providers by
+// BGPProvider resource name via Pool.GetByName.
 //
-// This interface is intentionally designed to map 1:1 to a future gRPC service
-// definition. When third-party or remote provider support is required:
-//
-//  1. Define a protobuf service from this interface. Each method becomes a
-//     unary RPC. No streaming, no callbacks, no shared state between calls.
-//
-//  2. Each provider type (FRR, GoBGP, future types) becomes a separate process
-//     exposing the gRPC service. The existing Go implementations become the
-//     server-side logic.
-//
-//  3. The cosmos controller becomes a pure gRPC client. Remove the in-process
-//     provider registry and replace with a dynamic client pool keyed by
-//     BGPProvider.spec endpoint.
-//
-//  4. BGPProvider.spec gains credentialsSecretRef for mTLS. The endpoint field
-//     already supports non-loopback addresses — remove the v1alpha1 restriction.
-//
-//  5. Capabilities() becomes a gRPC RPC called once after connection. Cache the
-//     result in BGPProvider.status.capabilities.
+// The Provider interface maps 1:1 to the BGPProviderService proto definition
+// in api/proto/bgp/provider/v1alpha1. GRPCProvider is the sole implementation,
+// delegating each call to the remote agent over the shared Pool connection.
 //
 // Do not add methods that cannot be expressed as stateless RPCs. Do not rely on
 // in-process shared state between calls.
@@ -28,7 +14,6 @@ package provider
 
 import (
 	"context"
-	"sync"
 )
 
 // Provider is the abstraction between the cosmos controller and a BGP daemon.
@@ -204,55 +189,4 @@ type CapabilitySet struct {
 	RouteReflection bool
 	// BFD indicates whether the daemon supports RFC 5880 bidirectional forwarding detection.
 	BFD bool
-}
-
-// Registry maps BGPProvider resource names to their in-process Provider implementations.
-// It is the control plane's live view of which daemons are currently configured.
-//
-// The registry is the v1alpha1 implementation of what will become a gRPC client pool
-// keyed by BGPProvider endpoint in Option B (see package-level evolution note).
-type Registry struct {
-	mu        sync.RWMutex
-	providers map[string]Provider
-}
-
-// NewRegistry creates an empty Registry.
-func NewRegistry() *Registry {
-	return &Registry{providers: make(map[string]Provider)}
-}
-
-// Set registers or replaces the Provider for the given BGPProvider resource name.
-func (r *Registry) Set(name string, p Provider) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.providers[name] = p
-}
-
-// Get returns the Provider for the given BGPProvider resource name.
-// The second return value is false when no provider is registered under name.
-func (r *Registry) Get(name string) (Provider, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	p, ok := r.providers[name]
-	return p, ok
-}
-
-// Delete removes the Provider registration for the given name.
-// It is a no-op when name is not registered.
-func (r *Registry) Delete(name string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.providers, name)
-}
-
-// List returns a shallow copy of all registered providers keyed by name.
-// The returned map is a snapshot — modifications to it do not affect the registry.
-func (r *Registry) List() map[string]Provider {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make(map[string]Provider, len(r.providers))
-	for k, v := range r.providers {
-		out[k] = v
-	}
-	return out
 }

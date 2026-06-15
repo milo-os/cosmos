@@ -77,8 +77,8 @@ func TestPeerReconcilerEVPNAddressFamily(t *testing.T) {
 	}
 
 	recording := &peerRecordingProvider{}
-	reg := provider.NewRegistry()
-	reg.Set("node-a", recording)
+	pool := provider.NewPool()
+	pool.SetForTest("node-a", recording)
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
@@ -87,9 +87,9 @@ func TestPeerReconcilerEVPNAddressFamily(t *testing.T) {
 		Build()
 
 	r := &PeerReconciler{
-		Client:   fakeClient,
-		Scheme:   scheme,
-		Registry: reg,
+		Client: fakeClient,
+		Scheme: scheme,
+		Pool:   pool,
 	}
 
 	if err := r.reconcileForProvider(context.Background(), bgpPeer, instance, *bp); err != nil {
@@ -144,8 +144,8 @@ func TestPeerReconcilerEVPNInheritedFromInstance(t *testing.T) {
 	}
 
 	recording := &peerRecordingProvider{}
-	reg := provider.NewRegistry()
-	reg.Set("node-a", recording)
+	pool := provider.NewPool()
+	pool.SetForTest("node-a", recording)
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
@@ -154,9 +154,9 @@ func TestPeerReconcilerEVPNInheritedFromInstance(t *testing.T) {
 		Build()
 
 	r := &PeerReconciler{
-		Client:   fakeClient,
-		Scheme:   scheme,
-		Registry: reg,
+		Client: fakeClient,
+		Scheme: scheme,
+		Pool:   pool,
 	}
 
 	if err := r.reconcileForProvider(context.Background(), bgpPeer, instance, *bp); err != nil {

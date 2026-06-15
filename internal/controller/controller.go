@@ -1,5 +1,5 @@
 // Package controller implements the Kubernetes-native BGP control plane.
-// It reconciles BGP CRDs into provider calls via the provider.Registry abstraction.
+// It reconciles BGP CRDs into provider calls via the provider.Pool gRPC client pool.
 package controller
 
 import (
@@ -39,12 +39,9 @@ func init() {
 
 // Manager holds the shared configuration for all BGP reconcilers.
 type Manager struct {
-	// Registry is the shared provider registry. All reconcilers look up provider
-	// implementations here. ProviderReconciler populates it at runtime.
-	Registry *provider.Registry
-	// Factory constructs provider implementations by daemon type and endpoint.
-	// Injected by the caller; cosmos ships no built-in provider implementations.
-	Factory ProviderFactory
+	// Pool is the shared gRPC client pool. All reconcilers look up provider
+	// implementations here. ProviderReconciler registers connections at runtime.
+	Pool *provider.Pool
 	// NodeName is the Kubernetes node name for this pod. Used by ProviderReconciler
 	// to scope reconciliation to BGPProvider resources on this node.
 	NodeName    string
@@ -57,7 +54,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 	providerReconciler := &ProviderReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Registry: m.Registry,
+		Pool:     m.Pool,
 		NodeName: m.NodeName,
 	}
 	if err := providerReconciler.SetupWithManager(mgr); err != nil {
@@ -67,7 +64,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 	if err := (&InstanceReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Registry: m.Registry,
+		Pool:     m.Pool,
 		NodeName: m.NodeName,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setup InstanceReconciler: %w", err)
@@ -76,7 +73,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 	if err := (&PeerReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Registry: m.Registry,
+		Pool:     m.Pool,
 		NodeName: m.NodeName,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setup PeerReconciler: %w", err)
@@ -85,7 +82,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 	if err := (&AdvertisementReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Registry: m.Registry,
+		Pool:     m.Pool,
 		NodeName: m.NodeName,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setup AdvertisementReconciler: %w", err)
@@ -94,7 +91,7 @@ func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
 	if err := (&RoutePolicyReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Registry: m.Registry,
+		Pool:     m.Pool,
 		NodeName: m.NodeName,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setup RoutePolicyReconciler: %w", err)
@@ -135,8 +132,15 @@ func Run(ctx context.Context, metricsAddr, healthAddr, nodeName string) error {
 		return fmt.Errorf("new manager: %w", err)
 	}
 
+	pool := provider.NewPool()
+
+	// Register pool as a manager Runnable so it is shut down cleanly on context cancellation.
+	if err := mgr.Add(pool); err != nil {
+		return fmt.Errorf("add pool to manager: %w", err)
+	}
+
 	m := &Manager{
-		Registry:    provider.NewRegistry(),
+		Pool:        pool,
 		NodeName:    nodeName,
 		MetricsAddr: metricsAddr,
 		HealthAddr:  healthAddr,

@@ -21,45 +21,14 @@ type BGPProvider struct {
 }
 
 // BGPProviderSpec defines the desired state of BGPProvider.
-//
-// +kubebuilder:validation:XValidation:rule="has(self.frr) != has(self.gobgp)",message="exactly one of frr or gobgp must be set"
-// +kubebuilder:validation:XValidation:rule="self.type == 'FRR' ? has(self.frr) : has(self.gobgp)",message="type must match the set daemon block"
 type BGPProviderSpec struct {
-	// Type is the BGP daemon type. Must match the set daemon block.
-	//
-	// +kubebuilder:validation:Enum=FRR;GoBGP
+	// Type is a free-form label identifying the BGP daemon implementation.
+	// Cosmos does not interpret this value; it is informational only.
 	Type string `json:"type"`
 
-	// FRR contains FRR northbound gRPC configuration.
-	// Required when type is FRR.
-	//
-	// +optional
-	FRR *FRRProviderConfig `json:"frr,omitempty"`
-
-	// GoBGP contains GoBGP gRPC configuration.
-	// Required when type is GoBGP.
-	//
-	// +optional
-	GoBGP *GoBGPProviderConfig `json:"gobgp,omitempty"`
-}
-
-// FRRProviderConfig holds FRR-specific endpoint configuration.
-type FRRProviderConfig struct {
-	// Endpoint is the gRPC endpoint for the FRR northbound API.
-	// In v1alpha1 only loopback addresses are accepted.
+	// Endpoint is the gRPC address of the remote BGP agent.
 	//
 	// +kubebuilder:default="localhost:50051"
-	// +optional
-	Endpoint string `json:"endpoint,omitempty"`
-}
-
-// GoBGPProviderConfig holds GoBGP-specific endpoint configuration.
-type GoBGPProviderConfig struct {
-	// Endpoint is the gRPC endpoint for the GoBGP API.
-	// In v1alpha1 only loopback addresses are accepted.
-	//
-	// +kubebuilder:default="localhost:50051"
-	// +optional
 	Endpoint string `json:"endpoint,omitempty"`
 }
 

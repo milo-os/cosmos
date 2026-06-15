@@ -154,9 +154,7 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               routeReflector:
-                description: |-
-                  RouteReflector configures this instance as a route reflector.
-                  Only valid in infra cluster role. Rejected in POP clusters.
+                description: RouteReflector configures this instance as a route reflector.
                 properties:
                   clusterID:
                     description: |-
