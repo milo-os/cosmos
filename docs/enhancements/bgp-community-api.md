@@ -7,6 +7,17 @@ stage: alpha
 
 > Last verified: 2026-04-23 against main
 
+> **Note (2026-06-13):** Several code path references in this document are stale.
+> The `communities: []string` field on `BGPAdvertisement` described as a
+> "placeholder" has been removed from the current API — `BGPAdvertisementSpec`
+> now only has `instanceRef`, `prefixes`, and `peerSelector`. The `BGPRoutePolicy`
+> examples in this document use an older `type: Export`/`type: Import` + `statements`
+> shape; the current API uses `importStatements`/`exportStatements` arrays with
+> named `PolicyStatement` objects. The `BGPPeeringPolicy` references below refer
+> to a resource that was never implemented. The proposal intent and RBAC model
+> remain valid; field-level details will need to be reconciled with the current
+> API before implementation.
+
 ## Table of Contents
 
 - [Summary](#summary)
@@ -42,10 +53,7 @@ kinds — `BGPCommunity` (a typed, named community value) and
 `BGPCommunityAttachment` (selector-driven tagging of advertisements owned by
 others) — and extends `BGPAdvertisement` and `BGPRoutePolicy` with
 community-aware references, selectors, match conditions, and a mutating
-`setCommunities` action. The existing
-`BGPAdvertisement.spec.communities: []string` placeholder
-(`api/v1alpha1/bgpadvertisement_types.go:35-38`) is deprecated in favour of
-the typed surface.
+`setCommunities` action.
 
 Grouping is handled the same way it is elsewhere in this repo: via
 `metav1.LabelSelector` over named objects. There is no
@@ -55,12 +63,12 @@ objects covers the same use case without adding a second grouping mechanism.
 ## Motivation
 
 The control plane already has a `BGPAdvertisement` resource with a
-raw-string `communities: ["AS:value"]` field, explicitly marked as a
+raw-string `communities: ["AS:value"]` field (now removed) that was marked as a
 "Phase 2+ extensibility placeholder"
-(`api/v1alpha1/bgpadvertisement_types.go:35-38`). The string list has no
+The string list has no
 registry, no typing (standard vs. large vs. extended vs. well-known), and
-`BGPRoutePolicy.statements` cannot match on communities — only on prefix
-and mask ranges (`api/v1alpha1/bgroutepolicy_types.go:42-68`).
+`BGPRoutePolicy` conditions cannot match on communities — only on prefix sets,
+community sets, and next-hop sets via `PolicyConditions.communitySet`.
 
 Consumers want to **classify** routes (internal vs. external, tenant scope,
 traffic-engineering hints, do-not-leak markers) and have that
@@ -110,7 +118,7 @@ the current API cannot express cleanly:
 |---|---|---|
 | `BGPCommunity` | Registers a named, typed community value. | Cluster |
 | `BGPCommunityAttachment` | Attaches communities to advertisements selected by label, without requiring write on the advertisement. | Cluster |
-| *(extend)* `BGPAdvertisement` | Adds `communityRefs` and `communitySelector`; deprecates raw `communities`. | — |
+| *(extend)* `BGPAdvertisement` | Adds `communityRefs` and `communitySelector`. | — |
 | *(extend)* `BGPRoutePolicy` | Adds community match on statements and a mutating `setCommunities` action. | — |
 
 All new kinds are cluster-scoped, consistent with existing BGP CRDs in
@@ -238,8 +246,7 @@ spec:
       bgp.miloapis.com/class: internal
 ```
 
-The existing `communities: []string` field remains but is deprecated (see
-[Deprecation of the raw-string placeholder](#deprecation-of-the-raw-string-placeholder)).
+The `communities: []string` field has been removed from `BGPAdvertisementSpec` in the current API.
 
 ### `BGPCommunityAttachment`
 
@@ -282,7 +289,7 @@ spec:
 
 ### `BGPRoutePolicy` extensions
 
-Two extensions to `PolicyStatement` (`api/v1alpha1/bgroutepolicy_types.go:42-52`):
+Two extensions to `PolicyStatement` (see `api/bgp/v1alpha1/routepolicy_types.go`):
 
 1. A `communityMatch` block for matching imported or exported routes by
    the communities they carry.
@@ -479,11 +486,9 @@ community to match.
 
 ### Deprecation of the raw-string placeholder
 
-`BGPAdvertisementSpec.Communities []string`
-(`api/v1alpha1/bgpadvertisement_types.go:35-38`) is kept for one release
-with a `// Deprecated:` comment and a CEL validation rule that rejects
-setting both `communities` and any of the new fields on the same object.
-At the next API version bump the field is removed.
+The raw `communities: []string` field previously present on `BGPAdvertisementSpec`
+has already been removed from the current API. No deprecation path is needed;
+this section is retained for historical context on the original design intent.
 
 ### Controller responsibilities
 
@@ -618,9 +623,8 @@ CRDs; label selectors cover the same ground declaratively.
 ## Prior Art
 
 - Existing codebase idioms: `BGPAdvertisement.peerSelector`,
-  `BGPRoutePolicy.peerSelector`, `BGPPeeringPolicy.selector`, and the
-  `prefixSet` field on `PolicyStatement`
-  (`api/v1alpha1/bgroutepolicy_types.go:42-68`).
+  `BGPRoutePolicy.peerSelector`, and the `prefixSets` field on
+  `PolicyConditions` (`api/bgp/v1alpha1/routepolicy_types.go`).
 - RFC 1997 (standard communities), RFC 1998 (common
   well-known-community usage patterns), RFC 4360 (extended
   communities), RFC 8092 (large communities).

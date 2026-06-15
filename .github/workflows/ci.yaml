@@ -20,8 +20,14 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Build, Vet, and Test
-        run: scripts/ci.sh build
+      - name: Install task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build, Vet, and Unit Test
+        run: task test:unit
 
   e2e:
     name: E2E Tests
@@ -59,4 +65,4 @@ jobs:
           version: v3.17.0
 
       - name: Run E2E suite
-        run: scripts/ci.sh e2e
+        run: task test:e2e

@@ -1,9 +1,14 @@
 ---
-status: implementable
-stage: alpha
+status: historical
+stage: archived
 ---
 
-# Service design: BGP control plane
+> **Archived.** This document describes the original design proposal for the BGP control plane.
+> The resource model it describes (BGPConfiguration, BGPEndpoint, BGPPeeringPolicy) was
+> superseded before implementation. The current API is documented in [docs/api/bgp.md](../api/bgp.md).
+> This document is retained as historical context only.
+
+# Service design: BGP control plane (historical)
 
 ## Table of contents
 

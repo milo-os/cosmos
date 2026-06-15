@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
 	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
+	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
 	"go.miloapis.com/cosmos/internal/provider"
 	frrprovider "go.miloapis.com/cosmos/internal/provider/frr"
 	gobgpprovider "go.miloapis.com/cosmos/internal/provider/gobgp"

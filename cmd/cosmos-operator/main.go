@@ -50,7 +50,7 @@ func newRootCommand() *cobra.Command {
 	opts := &options{}
 
 	cmd := &cobra.Command{
-		Use:   "cosmos",
+		Use:   "cosmos-operator",
 		Short: "Cosmos operator — reconciles network CRDs against local BGP daemons",
 		Long: `Cosmos reconciles network CRDs against independently-running BGP daemons.
 It reads its cluster role from the cosmos-config ConfigMap in cosmos-system and

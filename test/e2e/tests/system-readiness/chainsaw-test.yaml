@@ -12,7 +12,7 @@ spec:
               apiVersion: apps/v1
               kind: DaemonSet
               metadata:
-                name: bgp
+                name: cosmos
                 namespace: bgp-system
               status:
                 (numberReady == desiredNumberScheduled): true
@@ -23,11 +23,11 @@ spec:
             content: |
               set -e
               READY=$(kubectl -n bgp-system get pods \
-                -l app.kubernetes.io/name=bgp \
+                -l app.kubernetes.io/name=cosmos \
                 -o jsonpath='{range .items[*]}{.status.containerStatuses[0].ready}{"\n"}{end}' \
                 | grep -c "^true$" || true)
               if [ "$READY" -eq 0 ]; then
-                echo "ERROR: no bgp pods found with the bgp container ready"
+                echo "ERROR: no cosmos pods found with the cosmos-operator container ready"
                 exit 1
               fi
               echo "OK: $READY bgp pod(s) ready"

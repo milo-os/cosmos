@@ -13,11 +13,11 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
 	bgpv1alpha1 "go.miloapis.com/cosmos/api/bgp/v1alpha1"
+	providersv1alpha1 "go.miloapis.com/cosmos/api/providers/v1alpha1"
 	"go.miloapis.com/cosmos/internal/provider"
 )
 

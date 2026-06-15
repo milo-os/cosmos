@@ -58,14 +58,11 @@ kind: BGPPeer
 metadata:
   name: invalid-dual-ebgp-option
 spec:
-  providerRef:
-    name: node-1-frr
+  providerRef: node-1-frr
   address: "2001:db8:fabric::1"
   asNumber: 65000
-  ebgpMultihop:
-    ttl: 2
-  ttlSecurity:
-    ttl: 255                      # ERROR: cannot set both ebgpMultihop and ttlSecurity
+  ebgpMultihop: 2
+  ttlSecurity: 255                # ERROR: cannot set both ebgpMultihop and ttlSecurity
 
 ---
 # INVALID: BGPInstance with routerIDSource: Manual and no routerID — rejected by CEL validation
@@ -97,8 +94,7 @@ kind: BGPPeer
 metadata:
   name: invalid-dual-provider-selection
 spec:
-  providerRef:
-    name: node-1-frr
+  providerRef: node-1-frr
   providerSelector:                # ERROR: cannot set both providerRef and providerSelector
     matchLabels:
       bgp.datum.net/plane: underlay
@@ -118,13 +114,9 @@ kind: BGPAdvertisement
 metadata:
   name: invalid-vpn-advertisement
 spec:
-  providerSelector:
-    matchLabels:
-      bgp.datum.net/plane: overlay
-      bgp.miloapis.com/daemon: gobgp
   instanceRef: overlay             # ERROR: overlay instance uses VPNUnicast, not supported here
   prefixes:
-    - cidr: "2001:db8:loopback::/128"
+    - "2001:db8:loopback::/128"
 # Expected status:
 #   providers:
 #     node-1-gobgp:
@@ -184,8 +176,7 @@ kind: BGPPeer
 metadata:
   name: manually-created-peer      # WARNING: missing management labels
 spec:
-  providerRef:
-    name: node-1-frr
+  providerRef: node-1-frr
   address: "2001:db8::99"
   asNumber: 65000
 
