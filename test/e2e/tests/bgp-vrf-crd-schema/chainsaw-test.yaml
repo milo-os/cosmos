@@ -1,0 +1,324 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: bgp-vrf-crd-schema
+spec:
+  description: >
+    Verify schema validation, storage, and CEL rules for BGPVRFInstance CRDs.
+    Tests that valid resources are accepted and stored, invalid resources are
+    rejected by the API server, and all required fields are enforced.
+    Does not require the BGP operator to be running — CRD schema is enforced
+    by the API server alone.
+  steps:
+    - name: create-valid-vrf
+      try:
+        - apply:
+            resource:
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-valid-vrf
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "65000:100"
+                importRouteTargets:
+                  - value: "65000:100"
+                exportRouteTargets:
+                  - value: "65000:100"
+
+    - name: assert-vrf-stored
+      try:
+        - assert:
+            resource:
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-valid-vrf
+              (metadata.name): e2e-valid-vrf
+
+    - name: verify-vrf-fields
+      try:
+        - script:
+            content: |
+              set -e
+              RD=$(kubectl get bgpvrf e2e-valid-vrf \
+                -o jsonpath='{.spec.routeDistinguisher}')
+              IRT=$(kubectl get bgpvrf e2e-valid-vrf \
+                -o jsonpath='{.spec.importRouteTargets[0].value}')
+              ERT=$(kubectl get bgpvrf e2e-valid-vrf \
+                -o jsonpath='{.spec.exportRouteTargets[0].value}')
+              INST=$(kubectl get bgpvrf e2e-valid-vrf \
+                -o jsonpath='{.spec.instanceRef}')
+              if [ "$RD" != "65000:100" ]; then
+                echo "ERROR: routeDistinguisher = $RD, want 65000:100"
+                exit 1
+              fi
+              if [ "$IRT" != "65000:100" ]; then
+                echo "ERROR: importRouteTargets[0].value = $IRT, want 65000:100"
+                exit 1
+              fi
+              if [ "$ERT" != "65000:100" ]; then
+                echo "ERROR: exportRouteTargets[0].value = $ERT, want 65000:100"
+                exit 1
+              fi
+              if [ "$INST" != "overlay" ]; then
+                echo "ERROR: instanceRef = $INST, want overlay"
+                exit 1
+              fi
+              echo "OK: all fields stored correctly (RD=$RD IRT=$IRT ERT=$ERT instanceRef=$INST)"
+
+    - name: vrf-ip-format-rd
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl apply -f - <<EOF
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-ip-rd
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "192.0.2.1:100"
+                importRouteTargets:
+                  - value: "192.0.2.1:100"
+                exportRouteTargets:
+                  - value: "192.0.2.1:100"
+              EOF
+              kubectl delete bgpvrf e2e-vrf-ip-rd
+              echo "OK: IP:NN format RD accepted"
+
+    - name: vrf-multiple-route-targets
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl apply -f - <<EOF
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-multi-rt
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "65000:200"
+                importRouteTargets:
+                  - value: "65000:200"
+                  - value: "65001:200"
+                exportRouteTargets:
+                  - value: "65000:200"
+                  - value: "65001:200"
+              EOF
+              IRT_COUNT=$(kubectl get bgpvrf e2e-vrf-multi-rt \
+                -o jsonpath='{range .spec.importRouteTargets[*]}{.value}{"\n"}{end}' | wc -l | tr -d ' ')
+              ERT_COUNT=$(kubectl get bgpvrf e2e-vrf-multi-rt \
+                -o jsonpath='{range .spec.exportRouteTargets[*]}{.value}{"\n"}{end}' | wc -l | tr -d ' ')
+              kubectl delete bgpvrf e2e-vrf-multi-rt
+              if [ "$IRT_COUNT" -ne 2 ] || [ "$ERT_COUNT" -ne 2 ]; then
+                echo "ERROR: expected 2 import and 2 export RTs, got import=$IRT_COUNT export=$ERT_COUNT"
+                exit 1
+              fi
+              echo "OK: multiple route targets stored correctly (import=$IRT_COUNT export=$ERT_COUNT)"
+
+    - name: reject-invalid-rd-format
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-bad-rd
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "not-valid"
+                importRouteTargets:
+                  - value: "65000:100"
+                exportRouteTargets:
+                  - value: "65000:100"
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of invalid routeDistinguisher but resource was accepted"
+                kubectl delete bgpvrf e2e-vrf-bad-rd 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: invalid routeDistinguisher correctly rejected"
+              echo "Server response: $OUTPUT"
+
+    - name: reject-invalid-rt-format
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-bad-rt
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "65000:100"
+                importRouteTargets:
+                  - value: "bad-rt"
+                exportRouteTargets:
+                  - value: "65000:100"
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of invalid importRouteTarget value but resource was accepted"
+                kubectl delete bgpvrf e2e-vrf-bad-rt 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: invalid importRouteTarget value correctly rejected"
+              echo "Server response: $OUTPUT"
+
+    - name: reject-empty-import-route-targets
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-empty-irt
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "65000:100"
+                importRouteTargets: []
+                exportRouteTargets:
+                  - value: "65000:100"
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of empty importRouteTargets but resource was accepted"
+                kubectl delete bgpvrf e2e-vrf-empty-irt 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: empty importRouteTargets correctly rejected"
+              echo "Server response: $OUTPUT"
+
+    - name: reject-empty-export-route-targets
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-empty-ert
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "65000:100"
+                importRouteTargets:
+                  - value: "65000:100"
+                exportRouteTargets: []
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of empty exportRouteTargets but resource was accepted"
+                kubectl delete bgpvrf e2e-vrf-empty-ert 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: empty exportRouteTargets correctly rejected"
+              echo "Server response: $OUTPUT"
+
+    - name: reject-missing-instance-ref
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-no-instance
+              spec:
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                routeDistinguisher: "65000:100"
+                importRouteTargets:
+                  - value: "65000:100"
+                exportRouteTargets:
+                  - value: "65000:100"
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of missing instanceRef but resource was accepted"
+                kubectl delete bgpvrf e2e-vrf-no-instance 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: missing instanceRef correctly rejected"
+              echo "Server response: $OUTPUT"
+
+    - name: reject-missing-rd
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              metadata:
+                name: e2e-vrf-no-rd
+              spec:
+                instanceRef: overlay
+                providerSelector:
+                  matchLabels:
+                    daemon: GoBGP
+                importRouteTargets:
+                  - value: "65000:100"
+                exportRouteTargets:
+                  - value: "65000:100"
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of missing routeDistinguisher but resource was accepted"
+                kubectl delete bgpvrf e2e-vrf-no-rd 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: missing routeDistinguisher correctly rejected"
+              echo "Server response: $OUTPUT"
+
+      finally:
+        - delete:
+            ref:
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPVRFInstance
+              name: e2e-valid-vrf
