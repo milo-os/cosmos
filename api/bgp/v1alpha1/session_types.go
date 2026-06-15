@@ -5,8 +5,7 @@ import (
 )
 
 // BGPSession expresses bilateral BGP session intent.
-// Written by the management cluster cosmos. Propagated by Karmada to member clusters.
-// The receiving cluster's SessionReconciler generates BGPPeer resources locally.
+// SessionReconciler generates BGPPeer resources from it locally.
 // Self-contained: toPeers carries explicit resolved addresses, no cross-cluster lookups at reconcile time.
 //
 // +kubebuilder:object:root=true
@@ -47,8 +46,6 @@ type BGPSessionSpec struct {
 	FromExternalPeerRef *ExternalPeerRef `json:"fromExternalPeerRef,omitempty"`
 
 	// ToPeers is the explicit list of peer addresses for the to-side of the session.
-	// Resolved by management cluster cosmos at session write time.
-	// The receiving cluster uses these directly without cross-cluster lookups.
 	// Required when fromProviderSelector is set.
 	//
 	// +optional
@@ -96,7 +93,6 @@ type SessionPeer struct {
 	InstanceRef string `json:"instanceRef"`
 
 	// RouteReflectorClient designates this peer as an RR client on the generated BGPPeer.
-	// Set by management cluster cosmos when the to-side is an RR client designation.
 	//
 	// +optional
 	RouteReflectorClient bool `json:"routeReflectorClient,omitempty"`

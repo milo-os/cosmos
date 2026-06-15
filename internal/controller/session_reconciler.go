@@ -21,16 +21,10 @@ import (
 )
 
 // SessionReconciler reconciles BGPSession resources.
-//
-// In pop/infra clusters: generates BGPPeer resources from BGPSession spec.
-// In management clusters: validates BGPSession resources and writes status.
-// TODO: implement management-side session write logic (Karmada propagation).
-//
-// Active in: pop, infra, management.
+// It generates BGPPeer resources from BGPSession spec.
 type SessionReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	ClusterRole string
+	Scheme *runtime.Scheme
 }
 
 // Reconcile handles BGPSession events.
@@ -57,38 +51,11 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req reconcile.Request
 		}
 	}
 
-	// Route to the correct path based on cluster role.
-	switch r.ClusterRole {
-	case "management":
-		// TODO: implement management-side session validation and status update.
-		// Management cluster cosmos writes BGPSession; Karmada handles propagation.
-		return r.reconcileManagement(ctx, &session)
-	default:
-		// pop, infra
-		return r.reconcilePopInfra(ctx, &session)
-	}
+	return r.reconcile(ctx, &session)
 }
 
-// reconcileManagement handles the management-cluster path.
-// TODO: full management-side session reconciliation (write BGPSession from higher-level objects).
-func (r *SessionReconciler) reconcileManagement(ctx context.Context, session *bgpv1alpha1.BGPSession) (reconcile.Result, error) {
-	patch := client.MergeFrom(session.DeepCopy())
-	apimeta.SetStatusCondition(&session.Status.Conditions, metav1.Condition{
-		Type:               "PeersReconciled",
-		Status:             metav1.ConditionTrue,
-		Reason:             "ManagementCluster",
-		Message:            "management cluster: BGPSession validated",
-		ObservedGeneration: session.Generation,
-	})
-	if err := r.Status().Patch(ctx, session, patch); err != nil {
-		return ctrl.Result{}, fmt.Errorf("patch status: %w", err)
-	}
-	return ctrl.Result{}, nil
-}
-
-// reconcilePopInfra handles the pop/infra cluster path.
-// It generates BGPPeer resources from the BGPSession spec.
-func (r *SessionReconciler) reconcilePopInfra(ctx context.Context, session *bgpv1alpha1.BGPSession) (reconcile.Result, error) {
+// reconcile generates BGPPeer resources from the BGPSession spec.
+func (r *SessionReconciler) reconcile(ctx context.Context, session *bgpv1alpha1.BGPSession) (reconcile.Result, error) {
 	// Sessions from external peer refs have no BGPPeer to generate.
 	if session.Spec.FromExternalPeerRef != nil {
 		return r.reconcileExternalRef(ctx, session)
@@ -230,7 +197,7 @@ func (r *SessionReconciler) buildBGPPeer(
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
-				LabelManagedBy:   LabelManagedByManagement,
+				LabelManagedBy:   LabelManagedBySession,
 				LabelSessionName: session.Name,
 			},
 			Annotations: map[string]string{

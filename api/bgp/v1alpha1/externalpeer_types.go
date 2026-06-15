@@ -5,9 +5,7 @@ import (
 )
 
 // BGPExternalPeer is a registry entry for a BGP peer outside the cosmos-managed fleet.
-// Lives only in the management cluster. Referenced by management cluster cosmos when writing
-// BGPSession.spec.toPeers — the address and ASN are resolved at session write time.
-// Never propagated to member clusters.
+// Referenced by BGPSession.spec.toPeers — the address and ASN are resolved at session write time.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

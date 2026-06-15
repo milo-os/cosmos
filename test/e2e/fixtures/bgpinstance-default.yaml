@@ -6,8 +6,7 @@ spec:
   providerSelector: {}
   asNumber: 65000
   routerIDSource: Auto
+  listenPort: 1790
   addressFamilies:
     - afi: IPv6
       safi: Unicast
-  routeReflector:
-    clusterID: "10.255.255.1"

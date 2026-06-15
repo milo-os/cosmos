@@ -3,10 +3,6 @@ kind: ClusterRole
 metadata:
   name: bgp-operator
 rules:
-  # ConfigMaps: read cosmos-config in cosmos-system at startup.
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["get"]
   # Nodes: resolve IPv6 addresses for router-id computation.
   - apiGroups: [""]
     resources: ["nodes"]

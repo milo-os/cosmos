@@ -20,8 +20,6 @@ import (
 // ExternalPeerReconciler reconciles BGPExternalPeer resources.
 // It tracks how many BGPSession resources reference each external peer and
 // blocks deletion when the count is non-zero.
-//
-// Active in: management.
 type ExternalPeerReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

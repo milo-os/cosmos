@@ -26,8 +26,6 @@ import (
 // RoutePolicyReconciler reconciles BGPRoutePolicy resources.
 // It resolves peer selectors, orders all policies by priority, and programs them
 // on each matched provider.
-//
-// Active in: pop, infra.
 type RoutePolicyReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme

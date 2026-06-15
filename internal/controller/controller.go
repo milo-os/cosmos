@@ -38,10 +38,7 @@ func init() {
 }
 
 // Manager holds the shared configuration for all BGP reconcilers.
-// It wires reconcilers based on ClusterRole at startup.
 type Manager struct {
-	// ClusterRole is one of "pop", "infra", or "management".
-	ClusterRole string
 	// Registry is the shared provider registry. All reconcilers look up provider
 	// implementations here. ProviderReconciler populates it at runtime.
 	Registry *provider.Registry
@@ -55,99 +52,73 @@ type Manager struct {
 	HealthAddr  string
 }
 
-// SetupWithManager registers all reconcilers appropriate for m.ClusterRole.
+// SetupWithManager registers all reconcilers with mgr.
 func (m *Manager) SetupWithManager(mgr ctrl.Manager) error {
-	isPOPOrInfra := m.ClusterRole == "pop" || m.ClusterRole == "infra"
-	isManagement := m.ClusterRole == "management"
-
-	// ProviderReconciler: active in pop and infra.
-	if isPOPOrInfra {
-		providerReconciler := &ProviderReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Registry: m.Registry,
-			Factory:  m.Factory,
-			NodeName: m.NodeName,
-		}
-		if err := providerReconciler.SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("setup ProviderReconciler: %w", err)
-		}
+	providerReconciler := &ProviderReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Registry: m.Registry,
+		NodeName: m.NodeName,
+	}
+	if err := providerReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setup ProviderReconciler: %w", err)
 	}
 
-	// InstanceReconciler: active in pop and infra.
-	if isPOPOrInfra {
-		if err := (&InstanceReconciler{
-			Client:      mgr.GetClient(),
-			Scheme:      mgr.GetScheme(),
-			Registry:    m.Registry,
-			ClusterRole: m.ClusterRole,
-			NodeName:    m.NodeName,
-		}).SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("setup InstanceReconciler: %w", err)
-		}
+	if err := (&InstanceReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Registry: m.Registry,
+		NodeName: m.NodeName,
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setup InstanceReconciler: %w", err)
 	}
 
-	// PeerReconciler: active in pop and infra.
-	if isPOPOrInfra {
-		if err := (&PeerReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Registry: m.Registry,
-			NodeName: m.NodeName,
-		}).SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("setup PeerReconciler: %w", err)
-		}
+	if err := (&PeerReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Registry: m.Registry,
+		NodeName: m.NodeName,
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setup PeerReconciler: %w", err)
 	}
 
-	// AdvertisementReconciler: active in pop and infra.
-	if isPOPOrInfra {
-		if err := (&AdvertisementReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Registry: m.Registry,
-			NodeName: m.NodeName,
-		}).SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("setup AdvertisementReconciler: %w", err)
-		}
+	if err := (&AdvertisementReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Registry: m.Registry,
+		NodeName: m.NodeName,
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setup AdvertisementReconciler: %w", err)
 	}
 
-	// RoutePolicyReconciler: active in pop and infra.
-	if isPOPOrInfra {
-		if err := (&RoutePolicyReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Registry: m.Registry,
-			NodeName: m.NodeName,
-		}).SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("setup RoutePolicyReconciler: %w", err)
-		}
+	if err := (&RoutePolicyReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Registry: m.Registry,
+		NodeName: m.NodeName,
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setup RoutePolicyReconciler: %w", err)
 	}
 
-	// SessionReconciler: active in all cluster roles.
 	if err := (&SessionReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		ClusterRole: m.ClusterRole,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setup SessionReconciler: %w", err)
 	}
 
-	// ExternalPeerReconciler: active in management.
-	if isManagement {
-		if err := (&ExternalPeerReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-		}).SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("setup ExternalPeerReconciler: %w", err)
-		}
+	if err := (&ExternalPeerReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setup ExternalPeerReconciler: %w", err)
 	}
 
 	return nil
 }
 
 // Run starts the BGP CRD controller and blocks until ctx is cancelled.
-// restCfg is the Kubernetes REST config. clusterRole must be "pop", "infra", or "management".
-func Run(ctx context.Context, metricsAddr, healthAddr, clusterRole, nodeName string) error {
+func Run(ctx context.Context, metricsAddr, healthAddr, nodeName string) error {
 	if metricsAddr == "" {
 		metricsAddr = ":8082"
 	}
@@ -172,7 +143,6 @@ func Run(ctx context.Context, metricsAddr, healthAddr, clusterRole, nodeName str
 	}
 
 	m := &Manager{
-		ClusterRole: clusterRole,
 		Registry:    provider.NewRegistry(),
 		NodeName:    nodeName,
 		MetricsAddr: metricsAddr,
@@ -190,6 +160,6 @@ func Run(ctx context.Context, metricsAddr, healthAddr, clusterRole, nodeName str
 		return fmt.Errorf("add readyz check: %w", err)
 	}
 
-	log.Printf("bgp/controller: starting manager (clusterRole=%s node=%s)", clusterRole, nodeName)
+	log.Printf("bgp/controller: starting manager (node=%s)", nodeName)
 	return mgr.Start(ctx)
 }
