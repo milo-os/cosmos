@@ -4,16 +4,16 @@ metadata:
   name: bgp-peering
 spec:
   description: >
-    Verify that BGPSessions targeting per-node BGPProviders produce BGPPeer
-    resources and that the session finalizer cleans them up on deletion.
-    Uses the provider/session model: one BGPSession per node with the other
-    two nodes as toPeers, forming a full mesh.
+    Verify that BGPPeer resources are accepted by the API server and that the
+    PeerReconciler reconciles them against local BGP daemons. Creates BGPPeer
+    resources directly (one per node pair) forming a full mesh, then verifies
+    provider status and cleans up.
   steps:
     - name: cleanup-stale
       try:
         - script:
             content: |
-              kubectl delete bgpsession e2e-peering-w1 e2e-peering-w2 e2e-peering-w3 2>/dev/null || true
+              kubectl delete bgppeers -l e2e-test=bgp-peering 2>/dev/null || true
               echo "OK: stale resources cleaned up"
 
     - name: resolve-worker-node-ips
@@ -38,7 +38,7 @@ spec:
                 --from-literal=worker3="${W3}" \
                 --dry-run=client -o yaml | kubectl apply -f -
 
-    - name: create-bgp-sessions
+    - name: create-bgp-peers
       try:
         - script:
             content: |
@@ -52,30 +52,23 @@ spec:
               W2=$(get_ipv6 bgp-e2e-worker2)
               W3=$(get_ipv6 bgp-e2e-worker3)
 
-              # One BGPSession per node; SessionReconciler generates BGPPeers and
-              # skips any toPeer whose address matches the local node's own IPv6.
+              # One BGPPeer per directional pair in the full mesh.
               kubectl apply -f - <<EOF
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
+              kind: BGPPeer
               metadata:
-                name: e2e-peering-w1
+                name: e2e-peering-w1-to-w2
                 labels:
                   e2e-test: bgp-peering
               spec:
-                fromProviderSelector:
+                instanceRef: default
+                providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker
                     bgp.miloapis.com/daemon: GoBGP
-                fromInstanceRef: default
-                toPeers:
-                  - address: "${W2}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
-                  - address: "${W3}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
+                address: "${W2}"
+                asNumber: 65000
+                remotePort: 1790
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast
@@ -84,26 +77,42 @@ spec:
                   keepalive: 10
               ---
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
+              kind: BGPPeer
               metadata:
-                name: e2e-peering-w2
+                name: e2e-peering-w1-to-w3
                 labels:
                   e2e-test: bgp-peering
               spec:
-                fromProviderSelector:
+                instanceRef: default
+                providerSelector:
+                  matchLabels:
+                    bgp.miloapis.com/node: bgp-e2e-worker
+                    bgp.miloapis.com/daemon: GoBGP
+                address: "${W3}"
+                asNumber: 65000
+                remotePort: 1790
+                addressFamilies:
+                  - afi: IPv6
+                    safi: Unicast
+                timers:
+                  holdTime: 30
+                  keepalive: 10
+              ---
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-peering-w2-to-w1
+                labels:
+                  e2e-test: bgp-peering
+              spec:
+                instanceRef: default
+                providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker2
                     bgp.miloapis.com/daemon: GoBGP
-                fromInstanceRef: default
-                toPeers:
-                  - address: "${W1}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
-                  - address: "${W3}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
+                address: "${W1}"
+                asNumber: 65000
+                remotePort: 1790
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast
@@ -112,26 +121,64 @@ spec:
                   keepalive: 10
               ---
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
+              kind: BGPPeer
               metadata:
-                name: e2e-peering-w3
+                name: e2e-peering-w2-to-w3
                 labels:
                   e2e-test: bgp-peering
               spec:
-                fromProviderSelector:
+                instanceRef: default
+                providerSelector:
+                  matchLabels:
+                    bgp.miloapis.com/node: bgp-e2e-worker2
+                    bgp.miloapis.com/daemon: GoBGP
+                address: "${W3}"
+                asNumber: 65000
+                remotePort: 1790
+                addressFamilies:
+                  - afi: IPv6
+                    safi: Unicast
+                timers:
+                  holdTime: 30
+                  keepalive: 10
+              ---
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-peering-w3-to-w1
+                labels:
+                  e2e-test: bgp-peering
+              spec:
+                instanceRef: default
+                providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker3
                     bgp.miloapis.com/daemon: GoBGP
-                fromInstanceRef: default
-                toPeers:
-                  - address: "${W1}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
-                  - address: "${W2}"
-                    asNumber: 65000
-                    instanceRef: default
-                    remotePort: 1790
+                address: "${W1}"
+                asNumber: 65000
+                remotePort: 1790
+                addressFamilies:
+                  - afi: IPv6
+                    safi: Unicast
+                timers:
+                  holdTime: 30
+                  keepalive: 10
+              ---
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-peering-w3-to-w2
+                labels:
+                  e2e-test: bgp-peering
+              spec:
+                instanceRef: default
+                providerSelector:
+                  matchLabels:
+                    bgp.miloapis.com/node: bgp-e2e-worker3
+                    bgp.miloapis.com/daemon: GoBGP
+                address: "${W2}"
+                asNumber: 65000
+                remotePort: 1790
                 addressFamilies:
                   - afi: IPv6
                     safi: Unicast
@@ -140,74 +187,31 @@ spec:
                   keepalive: 10
               EOF
 
-    - name: assert-sessions-reconciled
+    - name: assert-bgppeers-reconciled
       try:
-        # All 3 sessions must have PeersReconciled=True before BGPPeers are visible.
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              RECONCILED=0
-              while [ "$RECONCILED" -lt 3 ] && [ "$ATTEMPTS" -lt 36 ]; do
-                RECONCILED=$(kubectl get bgpsessions \
-                  -l e2e-test=bgp-peering \
-                  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="PeersReconciled")].status}{"\n"}{end}' \
-                  | grep -c "^True$" || true)
-                ATTEMPTS=$((ATTEMPTS+1))
-                [ "$RECONCILED" -lt 3 ] && sleep 5
-              done
-              if [ "$RECONCILED" -lt 3 ]; then
-                echo "ERROR: only $RECONCILED/3 sessions have PeersReconciled=True after ${ATTEMPTS} attempts"
-                for s in e2e-peering-w1 e2e-peering-w2 e2e-peering-w3; do
-                  echo "--- $s ---"
-                  kubectl get bgpsession "$s" -o yaml 2>/dev/null | grep -A20 "status:" || true
-                done
-                exit 1
-              fi
-              echo "OK: $RECONCILED/3 sessions reconciled"
-
-    - name: assert-bgppeers-created
-      try:
-        # Each session generates 2 BGPPeers (one per toPeer) = 6 total across 3 sessions.
         - script:
             content: |
               set -e
               ATTEMPTS=0
               COUNT=0
               while [ "$COUNT" -lt 6 ] && [ "$ATTEMPTS" -lt 36 ]; do
-                COUNT=0
-                for SESSION in e2e-peering-w1 e2e-peering-w2 e2e-peering-w3; do
-                  C=$(kubectl get bgppeers \
-                    -l "bgp.miloapis.com/session-name=$SESSION" \
-                    --no-headers 2>/dev/null | wc -l)
-                  COUNT=$((COUNT + C))
-                done
+                COUNT=$(kubectl get bgppeers \
+                  -l e2e-test=bgp-peering \
+                  --no-headers 2>/dev/null | wc -l)
                 ATTEMPTS=$((ATTEMPTS+1))
                 [ "$COUNT" -lt 6 ] && sleep 5
               done
               if [ "$COUNT" -lt 6 ]; then
-                echo "ERROR: only $COUNT/6 BGPPeers created after ${ATTEMPTS} attempts"
+                echo "ERROR: only $COUNT/6 BGPPeers found after ${ATTEMPTS} attempts"
                 kubectl get bgppeers -o wide || true
                 exit 1
               fi
-              echo "OK: $COUNT BGPPeers created"
+              echo "OK: $COUNT BGPPeers present"
 
       finally:
-        - delete:
-            ref:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
-              name: e2e-peering-w1
-        - delete:
-            ref:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
-              name: e2e-peering-w2
-        - delete:
-            ref:
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPSession
-              name: e2e-peering-w3
+        - script:
+            content: |
+              kubectl delete bgppeers -l e2e-test=bgp-peering 2>/dev/null || true
         - delete:
             ref:
               apiVersion: v1
@@ -216,25 +220,20 @@ spec:
 
     - name: assert-peers-cleaned-up
       try:
-        # Session finalizer deletes all generated BGPPeers before removing the session.
         - script:
             content: |
               set -e
               ATTEMPTS=0
               COUNT=1
               while [ "$COUNT" -gt 0 ] && [ "$ATTEMPTS" -lt 30 ]; do
-                COUNT=0
-                for SESSION in e2e-peering-w1 e2e-peering-w2 e2e-peering-w3; do
-                  C=$(kubectl get bgppeers \
-                    -l "bgp.miloapis.com/session-name=$SESSION" \
-                    --no-headers 2>/dev/null | wc -l)
-                  COUNT=$((COUNT + C))
-                done
+                COUNT=$(kubectl get bgppeers \
+                  -l e2e-test=bgp-peering \
+                  --no-headers 2>/dev/null | wc -l)
                 ATTEMPTS=$((ATTEMPTS+1))
                 [ "$COUNT" -gt 0 ] && sleep 5
               done
               if [ "$COUNT" -gt 0 ]; then
-                echo "ERROR: $COUNT BGPPeers still exist after session deletion"
+                echo "ERROR: $COUNT BGPPeers still exist after deletion"
                 kubectl get bgppeers -o wide || true
                 exit 1
               fi

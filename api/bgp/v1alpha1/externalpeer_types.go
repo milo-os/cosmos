@@ -5,7 +5,6 @@ import (
 )
 
 // BGPExternalPeer is a registry entry for a BGP peer outside the cosmos-managed fleet.
-// Referenced by BGPSession.spec.toPeers — the address and ASN are resolved at session write time.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -49,16 +48,6 @@ type BGPExternalPeerStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// ReferencedBy is the count of BGPSession resources referencing this external peer.
-	//
-	// +optional
-	ReferencedBy int32 `json:"referencedBy,omitempty"`
-
-	// ReferencedByList names up to 50 referencing BGPSession resources.
-	//
-	// +optional
-	ReferencedByList []string `json:"referencedByList,omitempty"`
 }
 
 // +kubebuilder:object:root=true

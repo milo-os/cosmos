@@ -8,8 +8,8 @@ By the end of this guide you will have:
 - cosmos running on a POP node with auto-bootstrapped BGPProvider resources
 - A BGPInstance for the FRR underlay (IPv6 unicast)
 - A BGPInstance for the GoBGP overlay (VPNv4/VPNv6)
-- A BGPSession peering the underlay to a top-of-rack switch
-- A BGPSession peering the overlay to a regional route reflector
+- A BGPPeer peering the underlay to a top-of-rack switch
+- A BGPPeer peering the overlay to a regional route reflector
 
 ---
 
@@ -40,7 +40,7 @@ Verify that both API groups are installed:
 kubectl get crds | grep miloapis.com
 ```
 
-You should see seven CRDs:
+You should see six CRDs:
 
 ```
 bgpadvertisements.bgp.miloapis.com
@@ -48,7 +48,6 @@ bgpexternalpeers.bgp.miloapis.com
 bgpinstances.bgp.miloapis.com
 bgppeers.bgp.miloapis.com
 bgproutepolicies.bgp.miloapis.com
-bgpsessions.bgp.miloapis.com
 bgpproviders.providers.bgp.miloapis.com
 ```
 
@@ -177,90 +176,50 @@ kubectl apply -f overlay-instance.yaml
 
 ---
 
-## Step 6: Register the ToR switch in the management cluster
+## Step 6: Create BGPPeer resources in the management cluster
 
-In the **management cluster**, create a BGPExternalPeer for each ToR switch
-that POP nodes will peer with:
+BGPPeer resources are written in the management cluster and propagated to
+POP/infra clusters via Karmada.
 
-```yaml
-apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPExternalPeer
-metadata:
-  name: tor-jp-east-1-rack-a-1
-  labels:
-    bgp.datum.net/pop: jp-east-1
-    bgp.datum.net/rack: rack-a
-    bgp.datum.net/peer-type: tor
-spec:
-  address: "2001:db8:fabric::1"
-  asNumber: 65000
-  description: "ToR tor-1 in rack A, jp-east-1"
-```
-
-Apply to the management cluster:
-
-```bash
-kubectl --context management apply -f tor-externalpeer.yaml
-```
-
----
-
-## Step 7: Create BGPSession resources in the management cluster
-
-BGPSession resources are always written in the management cluster and
-propagated to POP/infra clusters via Karmada.
-
-### Underlay session (node to ToR)
+### Underlay peer (node to ToR)
 
 ```yaml
-# Written by management cluster cosmos.
-# Karmada propagates to pop-jp-east-1 based on fromProviderSelector labels.
+# Propagated by Karmada to the POP cluster based on providerSelector labels.
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPSession
+kind: BGPPeer
 metadata:
   name: node-1-to-tor-1
 spec:
-  fromProviderSelector:
+  instanceRef: underlay
+  providerSelector:
     matchLabels:
       bgp.miloapis.com/node: node-1
       bgp.miloapis.com/daemon: frr
-  fromInstanceRef: underlay
-  toPeers:
-    - address: "2001:db8:fabric::1"
-      asNumber: 65000
-      instanceRef: underlay
-      routeReflectorClient: false
+  address: "2001:db8:fabric::1"
+  asNumber: 65000
   addressFamilies:
     - afi: IPv6
       safi: Unicast
   allowAsIn: 1
 ```
 
-### Overlay session (node to route reflectors)
+### Overlay peer (node to route reflector)
 
 ```yaml
-# Written by management cluster cosmos.
-# toPeers resolved from BGPProvider resources in the infra cluster.
+# Propagated by Karmada to the POP cluster.
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPSession
+kind: BGPPeer
 metadata:
-  name: tokyo-overlay-to-apac-rrs
+  name: tokyo-overlay-to-rr-apac-1
 spec:
-  fromProviderSelector:
+  instanceRef: overlay
+  providerSelector:
     matchLabels:
       bgp.datum.net/plane: overlay
       bgp.datum.net/pop: jp-east-1
       bgp.miloapis.com/daemon: gobgp
-  fromInstanceRef: overlay
-  toPeers:
-    - address: "2001:db8::rr-apac-1"
-      asNumber: 65000
-      instanceRef: overlay
-      routeReflectorClient: false
-    - address: "2001:db8::rr-apac-2"
-      asNumber: 65000
-      instanceRef: overlay
-      routeReflectorClient: false
+  address: "2001:db8::rr-apac-1"
+  asNumber: 65000
   addressFamilies:
     - afi: IPv4
       safi: VPNUnicast
@@ -271,20 +230,19 @@ spec:
     keepalive: 30
 ```
 
-Apply both to the management cluster:
+Apply to the management cluster:
 
 ```bash
-kubectl --context management apply -f underlay-session.yaml
-kubectl --context management apply -f overlay-session.yaml
+kubectl --context management apply -f underlay-peer.yaml
+kubectl --context management apply -f overlay-peer.yaml
 ```
 
-Karmada propagates the BGPSession resources to the POP cluster. The
-SessionReconciler on the POP cluster generates BGPPeer resources and the
+Karmada propagates the BGPPeer resources to the POP cluster and the
 PeerReconciler configures the daemons.
 
 ---
 
-## Step 8: Verify BGPPeer resources and session state
+## Step 7: Verify BGPPeer resources and session state
 
 After Karmada propagation and reconciliation, verify that BGPPeer resources
 exist on the POP cluster:
@@ -315,7 +273,7 @@ has reached Established state. If a session is not establishing:
 
 ---
 
-## Step 9: Advertise infrastructure prefixes (underlay only)
+## Step 8: Advertise infrastructure prefixes (underlay only)
 
 For loopback addresses and SRv6 locator blocks, create a BGPAdvertisement
 on the POP cluster:
@@ -350,7 +308,7 @@ is in the FRR RIB.
 
 ## Next steps
 
-- Read the full [API reference](api/) for all 7 CRDs, including field
+- Read the full [API reference](api/) for all 6 CRDs, including field
   definitions, conditions, and the operational contract between cosmos and the
   CNI plugin.
 - Review the [example files](examples/) for complete annotated YAML:
@@ -359,9 +317,6 @@ is in the FRR RIB.
   - [BGPInstance — overlay GoBGP](examples/pop-bgpinstance-overlay.yaml)
   - [BGPInstance — infra route reflector](examples/infra-bgpinstance-rr.yaml)
   - [BGPExternalPeer — ToR switch](examples/mgmt-bgpexternalpeer-tor.yaml)
-  - [BGPSession — underlay to ToR](examples/mgmt-bgpsession-underlay-tor.yaml)
-  - [BGPSession — overlay to RRs](examples/mgmt-bgpsession-overlay-rrs.yaml)
-  - [BGPSession — RR client (infra)](examples/infra-bgpsession-rr-client.yaml)
   - [Rejected configurations](examples/rejected-configurations.yaml)
 
 <!-- References -->
