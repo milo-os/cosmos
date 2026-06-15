@@ -17,7 +17,7 @@ type peerRecordingProvider struct {
 	lastPeerSpec provider.PeerSpec
 }
 
-func (p *peerRecordingProvider) ConfigureSpeaker(_ context.Context, _ provider.SpeakerSpec) (bool, error) {
+func (p *peerRecordingProvider) ConfigureInstance(_ context.Context, _ provider.InstanceSpec) (bool, error) {
 	return false, nil
 }
 func (p *peerRecordingProvider) AddOrUpdatePeer(_ context.Context, spec provider.PeerSpec) error {

@@ -27,7 +27,7 @@ import (
 
 // InstanceReconciler reconciles BGPInstance resources.
 // It resolves the router ID, derives per-provider speaker configuration, and calls
-// provider.ConfigureSpeaker for each matched BGPProvider.
+// provider.ConfigureInstance for each matched BGPProvider.
 type InstanceReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
@@ -149,7 +149,7 @@ func (r *InstanceReconciler) reconcileForProvider(
 		rrConfig = &provider.RouteReflectorConfig{ClusterID: rr.ClusterID}
 	}
 
-	spec := provider.SpeakerSpec{
+	spec := provider.InstanceSpec{
 		ASNumber:       instance.Spec.ASNumber,
 		RouterID:       routerID,
 		ListenPort:     listenPort,
@@ -159,10 +159,10 @@ func (r *InstanceReconciler) reconcileForProvider(
 		RouteReflector: rrConfig,
 	}
 
-	restarted, err := impl.ConfigureSpeaker(ctx, spec)
+	restarted, err := impl.ConfigureInstance(ctx, spec)
 	if err != nil {
 		return r.writeInstanceProviderStatus(ctx, instance, bp.Name, bp.Spec.Type, false,
-			"ConfigurationFailed", fmt.Sprintf("ConfigureSpeaker: %v", err))
+			"ConfigurationFailed", fmt.Sprintf("ConfigureInstance: %v", err))
 	}
 
 	// When the remote agent was restarted, all peer state is wiped. Bump an
