@@ -24,7 +24,7 @@ type BGPAdvertisement struct {
 // BGPAdvertisementSpec defines the desired advertisement state.
 type BGPAdvertisementSpec struct {
 	// InstanceRef is the name of the BGPInstance to advertise through.
-	// Must reference a BGPInstance bound to FRR providers with Unicast families.
+	// Must reference a BGPInstance bound to providers with Unicast address families.
 	InstanceRef string `json:"instanceRef"`
 
 	// Prefixes is the list of IPv4 or IPv6 unicast CIDR blocks to advertise.

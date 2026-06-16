@@ -7,44 +7,25 @@
 # None of these should be applied to a running cluster.
 
 ---
-# INVALID: BGPProvider with both frr and gobgp set — rejected by CEL validation
+# INVALID: BGPProvider with a malformed endpoint — InvalidEndpoint condition
 #
-# A BGPProvider may configure at most one daemon backend. Setting both frr and
-# gobgp in the same spec violates the CEL rule:
-#   (has(self.frr) && !has(self.gobgp)) || (!has(self.frr) && has(self.gobgp))
-# The API server rejects the resource at admission time.
+# cosmos validates that spec.endpoint is a well-formed host:port string.
+# If the endpoint cannot be parsed, the controller sets Ready=False with
+# reason InvalidEndpoint. The resource is accepted by the API but will
+# never become Ready.
 apiVersion: providers.bgp.miloapis.com/v1alpha1
 kind: BGPProvider
 metadata:
-  name: invalid-dual-daemon
+  name: invalid-malformed-endpoint
 spec:
-  type: FRR
-  frr:
-    endpoint: "localhost:50051"
-  gobgp:
-    endpoint: "localhost:50052"   # ERROR: cannot set both frr and gobgp
-
----
-# INVALID: BGPProvider with a non-loopback endpoint — RemoteProviderNotSupported condition
-#
-# cosmos only supports local daemon connections. If the endpoint resolves to a
-# non-loopback address (anything other than localhost or 127.0.0.1/::1), the
-# controller sets the RemoteProviderNotSupported condition and does not attempt
-# to connect. The resource is accepted by the API but will never become Ready.
-apiVersion: providers.bgp.miloapis.com/v1alpha1
-kind: BGPProvider
-metadata:
-  name: invalid-remote-endpoint
-spec:
-  type: GoBGP
-  gobgp:
-    endpoint: "10.0.1.5:50051"   # ERROR: remote address not supported
+  type: overlay
+  endpoint: "not-a-valid-endpoint"  # ERROR: malformed host:port
 # Expected status:
 #   conditions:
-#     - type: RemoteProviderNotSupported
-#       status: "True"
-#       reason: RemoteEndpoint
-#       message: "endpoint must be a loopback address"
+#     - type: Ready
+#       status: "False"
+#       reason: InvalidEndpoint
+#       message: "endpoint \"not-a-valid-endpoint\" is malformed: ..."
 
 ---
 # INVALID: BGPPeer with both ebgpMultihop and ttlSecurity set — rejected by CEL validation
@@ -58,7 +39,7 @@ kind: BGPPeer
 metadata:
   name: invalid-dual-ebgp-option
 spec:
-  providerRef: node-1-frr
+  providerRef: node-1-underlay
   address: "2001:db8:fabric::1"
   asNumber: 65000
   ebgpMultihop: 2
@@ -94,7 +75,7 @@ kind: BGPPeer
 metadata:
   name: invalid-dual-provider-selection
 spec:
-  providerRef: node-1-frr
+  providerRef: node-1-underlay
   providerSelector:                # ERROR: cannot set both providerRef and providerSelector
     matchLabels:
       bgp.datum.net/plane: underlay
@@ -119,7 +100,7 @@ spec:
     - "2001:db8:loopback::/128"
 # Expected status:
 #   providers:
-#     node-1-gobgp:
+#     - providerName: node-1-overlay
 #       conditions:
 #         - type: UnsupportedAddressFamily
 #           status: "True"
@@ -131,7 +112,7 @@ spec:
 # Route reflectors are infra cluster components. Setting spec.routeReflector
 # on a BGPInstance in a POP cluster is a configuration error. The controller
 # sets the RouteReflectorInPOPCluster condition and does not configure RR mode
-# in the daemon.
+# in the remote agent.
 apiVersion: bgp.miloapis.com/v1alpha1
 kind: BGPInstance
 metadata:
@@ -141,7 +122,6 @@ spec:
     matchLabels:
       bgp.datum.net/plane: underlay
       bgp.datum.net/pop: jp-east-1
-      bgp.miloapis.com/daemon: frr
   asNumber: 65000
   addressFamilies:
     - afi: IPv6
@@ -150,7 +130,7 @@ spec:
     clusterID: "10.0.1.1"         # ERROR: routeReflector is not supported in POP clusters
 # Expected status:
 #   providers:
-#     node-1-frr:
+#     - providerName: node-1-underlay
 #       conditions:
 #         - type: RouteReflectorInPOPCluster
 #           status: "True"
@@ -165,20 +145,19 @@ spec:
 #
 # Resolution: delete or update all dependent resources first.
 #
-# To force removal (destructive — orphans daemon state):
-#   kubectl patch bgpprovider/node-1-frr \
+# To force removal (destructive — orphans remote agent state):
+#   kubectl patch bgpprovider/node-1-underlay \
 #     --type=merge -p '{"metadata":{"finalizers":[]}}'
 apiVersion: providers.bgp.miloapis.com/v1alpha1
 kind: BGPProvider
 metadata:
-  name: node-1-frr                 # still selected by BGPInstance/underlay
+  name: node-1-underlay            # still selected by BGPInstance/underlay
   finalizers:
     - cosmos.bgp.miloapis.com/cleanup
   deletionTimestamp: "2024-01-01T12:00:00Z"
 spec:
-  type: FRR
-  frr:
-    endpoint: "localhost:50051"
+  type: underlay
+  endpoint: "localhost:50051"
 # Expected status:
 #   conditions:
 #     - type: DeletionBlocked

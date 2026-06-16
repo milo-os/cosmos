@@ -34,7 +34,7 @@ type AdvertisementReconciler struct {
 
 // nodeFinalizer returns the finalizer name for this controller instance.
 // When running as a DaemonSet (NodeName set), each pod uses a node-scoped
-// finalizer so every pod can independently clean up its own GoBGP providers
+// finalizer so every pod can independently clean up its own provider state
 // before the object is fully deleted. Falls back to the shared Finalizer in
 // dev/test mode (NodeName empty).
 func (r *AdvertisementReconciler) nodeFinalizer() string {
@@ -250,7 +250,7 @@ func (r *AdvertisementReconciler) setAdvCondition(
 
 // handleDelete withdraws all prefixes on each local provider and removes this
 // pod's node-scoped finalizer. Each DaemonSet pod independently cleans up its
-// own GoBGP providers; the BGPAdvertisement object is not fully deleted until
+// own provider state; the BGPAdvertisement object is not fully deleted until
 // every node's finalizer has been removed.
 func (r *AdvertisementReconciler) handleDelete(ctx context.Context, adv *bgpv1alpha1.BGPAdvertisement) error {
 	fin := r.nodeFinalizer()

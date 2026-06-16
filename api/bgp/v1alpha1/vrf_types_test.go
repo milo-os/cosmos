@@ -17,7 +17,7 @@ func newTestVRF() *BGPVRFInstance {
 		Spec: BGPVRFInstanceSpec{
 			InstanceRef: "overlay",
 			ProviderSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{"daemon": "GoBGP"},
+				MatchLabels: map[string]string{"plane": "overlay"},
 			},
 			RouteDistinguisher: "65000:100",
 			ImportRouteTargets: []RouteTarget{{Value: "65000:100"}},
@@ -35,7 +35,7 @@ func TestBGPVRFInstanceDeepCopy(t *testing.T) {
 	// Mutate dup — original must be unaffected.
 	dup.Spec.RouteDistinguisher = "65001:200"
 	dup.Spec.ImportRouteTargets[0].Value = "65001:200"
-	dup.Spec.ProviderSelector.MatchLabels["daemon"] = "FRR"
+	dup.Spec.ProviderSelector.MatchLabels["plane"] = "underlay"
 
 	if orig.Spec.RouteDistinguisher != "65000:100" {
 		t.Errorf("RouteDistinguisher mutated: got %q", orig.Spec.RouteDistinguisher)
@@ -43,8 +43,8 @@ func TestBGPVRFInstanceDeepCopy(t *testing.T) {
 	if orig.Spec.ImportRouteTargets[0].Value != "65000:100" {
 		t.Errorf("ImportRouteTargets[0] mutated: got %q", orig.Spec.ImportRouteTargets[0].Value)
 	}
-	if orig.Spec.ProviderSelector.MatchLabels["daemon"] != "GoBGP" {
-		t.Errorf("ProviderSelector.MatchLabels mutated: got %q", orig.Spec.ProviderSelector.MatchLabels["daemon"])
+	if orig.Spec.ProviderSelector.MatchLabels["plane"] != "overlay" {
+		t.Errorf("ProviderSelector.MatchLabels mutated: got %q", orig.Spec.ProviderSelector.MatchLabels["plane"])
 	}
 }
 

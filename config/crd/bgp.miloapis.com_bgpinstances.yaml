@@ -341,7 +341,7 @@ spec:
                       - type
                       x-kubernetes-list-type: map
                     daemon:
-                      description: Daemon is the daemon type (FRR or GoBGP).
+                      description: Daemon is the agent type reported by the BGPProvider.
                       type: string
                     providerName:
                       description: ProviderName is the name of the BGPProvider this

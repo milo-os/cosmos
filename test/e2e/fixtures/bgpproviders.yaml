@@ -1,32 +1,29 @@
 apiVersion: providers.bgp.miloapis.com/v1alpha1
 kind: BGPProvider
 metadata:
-  name: bgp-e2e-worker-gobgp
+  name: bgp-e2e-worker
   labels:
     bgp.miloapis.com/node: bgp-e2e-worker
-    bgp.miloapis.com/daemon: GoBGP
 spec:
-  type: GoBGP
+  type: test-agent
   endpoint: "localhost:50051"
 ---
 apiVersion: providers.bgp.miloapis.com/v1alpha1
 kind: BGPProvider
 metadata:
-  name: bgp-e2e-worker2-gobgp
+  name: bgp-e2e-worker2
   labels:
     bgp.miloapis.com/node: bgp-e2e-worker2
-    bgp.miloapis.com/daemon: GoBGP
 spec:
-  type: GoBGP
+  type: test-agent
   endpoint: "localhost:50051"
 ---
 apiVersion: providers.bgp.miloapis.com/v1alpha1
 kind: BGPProvider
 metadata:
-  name: bgp-e2e-worker3-gobgp
+  name: bgp-e2e-worker3
   labels:
     bgp.miloapis.com/node: bgp-e2e-worker3
-    bgp.miloapis.com/daemon: GoBGP
 spec:
-  type: GoBGP
+  type: test-agent
   endpoint: "localhost:50051"

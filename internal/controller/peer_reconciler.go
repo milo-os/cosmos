@@ -370,7 +370,7 @@ func (r *PeerReconciler) handleDelete(ctx context.Context, peer *bgpv1alpha1.BGP
 	blocked := false
 	for _, bp := range providers {
 		// Skip DeletePeer if another live BGPPeer still owns this (provider, address) pair.
-		// GoBGP holds one session per address; removing it here would break the other peer.
+		// The provider holds one session per address; removing it here would break the other peer.
 		otherExists := false
 		for _, other := range allPeers.Items {
 			if other.Name == peer.Name || !other.DeletionTimestamp.IsZero() {

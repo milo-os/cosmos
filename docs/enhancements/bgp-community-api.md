@@ -503,10 +503,10 @@ this section is retained for historical context on the original design intent.
 - `BGPAdvertisement`: the existing advertisement reconciler is extended
   to resolve `communityRefs`, `communitySelector`, and any
   `BGPCommunityAttachment` union into the community list it sends into
-  GoBGP at render time.
+  the provider at render time.
 - `BGPRoutePolicy`: the policy reconciler resolves communities at the
   same point it resolves `prefixSet` today, and translates
-  `communityMatch` + `setCommunities` into the GoBGP policy API.
+  `communityMatch` + `setCommunities` into the provider policy API.
 
 ### RBAC split
 
@@ -608,7 +608,7 @@ CRDs; label selectors cover the same ground declaratively.
    desirable in v1, or should mutation be deferred to a follow-up to
    keep `BGPRoutePolicy` filter-only? Leaning toward shipping it:
    stripping classification at the border is a concrete, already-named
-   user story, and GoBGP supports it natively.
+   user story, and the provider interface supports it.
 2. **Extended communities in v1 vs. with `BGPVPN`.** Route-target
    values are the main user of extended communities, and that user is
    VPN import/export. One option is to gate `type: Extended` until the

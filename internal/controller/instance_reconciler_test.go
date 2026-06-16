@@ -69,16 +69,16 @@ func TestListenPortPassthrough(t *testing.T) {
 					RouterID:       "10.0.0.1",
 					ListenPort:     tc.listenPort,
 					ProviderSelector: metav1.LabelSelector{
-						MatchLabels: map[string]string{"type": "gobgp"},
+						MatchLabels: map[string]string{"type": "test-agent"},
 					},
 				},
 			}
 			bp := &providersv1alpha1.BGPProvider{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-provider",
-					Labels: map[string]string{"type": "gobgp"},
+					Labels: map[string]string{"type": "test-agent"},
 				},
-				Spec: providersv1alpha1.BGPProviderSpec{Type: "GoBGP"},
+				Spec: providersv1alpha1.BGPProviderSpec{Type: "test-agent"},
 			}
 
 			fakeClient := fake.NewClientBuilder().
@@ -104,8 +104,8 @@ func TestListenPortPassthrough(t *testing.T) {
 	}
 }
 
-// TestListenPortExplicitOverride is preserved for its daemon-type coverage:
-// the port is always sourced from spec.listenPort regardless of daemon type or RR config.
+// TestListenPortExplicitOverride verifies that the listen port is always sourced
+// from spec.listenPort regardless of agent type or RR config.
 func TestListenPortExplicitOverride(t *testing.T) {
 	rrSpec := &bgpv1alpha1.RouteReflectorConfig{ClusterID: "1.0.0.1"}
 	port := int32(1179)
@@ -117,9 +117,9 @@ func TestListenPortExplicitOverride(t *testing.T) {
 		listenPort     *int32
 		wantListenPort int32
 	}{
-		{name: "GoBGP worker", daemonType: "GoBGP", listenPort: &port, wantListenPort: 1179},
-		{name: "GoBGP RR", daemonType: "GoBGP", routeReflector: rrSpec, listenPort: &port, wantListenPort: 1179},
-		{name: "FRR", daemonType: "FRR", listenPort: &port, wantListenPort: 1179},
+		{name: "worker agent", daemonType: "agent-a", listenPort: &port, wantListenPort: 1179},
+		{name: "RR agent", daemonType: "agent-a", routeReflector: rrSpec, listenPort: &port, wantListenPort: 1179},
+		{name: "other agent", daemonType: "agent-b", listenPort: &port, wantListenPort: 1179},
 	}
 
 	for _, tc := range tests {
@@ -186,16 +186,16 @@ func TestSpeakerSpecPropagation(t *testing.T) {
 			RouterIDSource: "Manual",
 			RouterID:       "192.0.2.1",
 			ProviderSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{"type": "frr"},
+				MatchLabels: map[string]string{"type": "test-agent"},
 			},
 		},
 	}
 	bp := &providersv1alpha1.BGPProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "test-provider",
-			Labels: map[string]string{"type": "frr"},
+			Labels: map[string]string{"type": "test-agent"},
 		},
-		Spec: providersv1alpha1.BGPProviderSpec{Type: "FRR"},
+		Spec: providersv1alpha1.BGPProviderSpec{Type: "test-agent"},
 	}
 
 	fakeClient := fake.NewClientBuilder().

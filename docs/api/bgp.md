@@ -12,20 +12,28 @@ stage: alpha
 
 ## 1. Overview
 
-Cosmos is the BGP control plane for the Datum.net fleet. It manages two distinct BGP planes:
+Cosmos is the BGP control plane for the Datum.net fleet. BGP CRDs marshal
+configuration calls to `BGPProvider` resources. Each `BGPProvider` points to a
+remote agent that implements the `BGPProviderService` gRPC interface. Cosmos has
+no built-in knowledge of what daemon or process runs behind a provider — it only
+cares that the endpoint satisfies the gRPC contract.
 
-| Plane | Daemon | Purpose |
-|-------|--------|---------|
-| **Underlay** | FRR | IPv6 unicast fabric routing between nodes and top-of-rack switches |
-| **Overlay** | GoBGP | L3VPN (VPNv4/VPNv6) distribution for tenant workloads |
+The fleet uses two BGP planes per node:
 
-Each plane is driven by a separate BGP daemon instance, selected by label. The two planes run independently on the same nodes — the underlay provides reachability; the overlay distributes VPN routes over that reachable fabric.
+| Plane | Purpose |
+|-------|---------|
+| **Underlay** | IPv6 unicast fabric routing between nodes and top-of-rack switches |
+| **Overlay** | L3VPN (VPNv4/VPNv6) distribution for tenant workloads |
+
+Each plane is represented by a separate `BGPProvider` resource with plane-specific
+labels. `BGPInstance`, `BGPPeer`, and other resources target providers by label
+selector — never by daemon type or implementation detail.
 
 ### API Groups
 
 | Group | Purpose |
 |-------|---------|
-| `providers.bgp.miloapis.com/v1alpha1` | BGP daemon lifecycle (BGPProvider) |
+| `providers.bgp.miloapis.com/v1alpha1` | BGP agent lifecycle (BGPProvider) |
 | `bgp.miloapis.com/v1alpha1` | BGP speaker config, sessions, advertisements, and policies |
 
 All resources in both groups are **cluster-scoped** because BGP topology spans namespace boundaries.
@@ -41,7 +49,7 @@ The fleet operates three cluster roles. Each role runs a specific subset of cosm
 A point-of-presence cluster. Runs on every edge node.
 
 - Runs **BGPProvider** (auto-bootstrapped by cosmos startup)
-- Runs **BGPInstance** for `underlay` (FRR) and `overlay` (GoBGP)
+- Runs **BGPInstance** for `underlay` and `overlay` planes
 - Receives **BGPPeer** resources propagated from the management cluster via Karmada
 - Runs **BGPAdvertisement** for loopbacks and SRv6 locators
 - Runs **BGPRoutePolicy** for import/export filtering
@@ -50,13 +58,13 @@ A point-of-presence cluster. Runs on every edge node.
 
 A regional infrastructure cluster. Hosts route reflectors.
 
-- Runs **BGPProvider** for the RR daemon instance
+- Runs **BGPProvider** for the RR agent instance
 - Runs **BGPInstance** for the RR speaker (VPNv4/VPNv6)
 - Receives **BGPPeer** resources from the management cluster
 
 ### Management cluster
 
-The central orchestrator. Does not run any BGP daemons.
+The central orchestrator. Does not run any BGP agents.
 
 - Holds the authoritative **BGPExternalPeer** registry (ToR switches, upstream peers)
 - Writes **BGPPeer** resources and propagates them to POP and infra clusters via Karmada
@@ -80,53 +88,45 @@ There are exactly 6 CRDs across the two API groups.
 
 ### BGPProvider
 
-`BGPProvider` represents a single BGP daemon instance (FRR or GoBGP) running on a node. It is **auto-bootstrapped at cosmos startup** — operators do not create BGPProvider resources manually.
+`BGPProvider` represents one remote BGP agent instance that cosmos connects to
+via gRPC. It is **auto-bootstrapped at cosmos startup** — operators do not create
+BGPProvider resources manually.
 
-The provider is the anchor for all other resources: BGPInstance, BGPPeer, BGPAdvertisement, and BGPRoutePolicy all select a provider via `providerRef` or `providerSelector`.
+The provider is the anchor for all other resources: BGPInstance, BGPPeer,
+BGPAdvertisement, and BGPRoutePolicy all select a provider via `providerRef` or
+`providerSelector`.
 
 #### Spec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | `string` | Yes | Daemon type. Enum: `FRR`, `GoBGP`. Must match the set daemon block. |
-| `frr` | `FRRConfig` | Conditional | Required when `type` is `FRR`. Mutually exclusive with `gobgp`. |
-| `gobgp` | `GoBGPConfig` | Conditional | Required when `type` is `GoBGP`. Mutually exclusive with `frr`. |
-
-**FRRConfig**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `endpoint` | `string` | No | gRPC endpoint of the FRR management daemon. Default: `localhost:50051`. Must be a loopback address. |
-
-**GoBGPConfig**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `endpoint` | `string` | No | gRPC endpoint of the GoBGP daemon. Default: `localhost:50051`. Must be a loopback address. |
+| `type` | `string` | No | Free-form label identifying the agent implementation. Informational only; cosmos does not interpret this value. |
+| `endpoint` | `string` | No | gRPC address of the remote BGP agent. Default: `localhost:50051`. |
 
 #### Status
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `conditions` | `[]metav1.Condition` | Current state. See conditions table below. |
-| `capabilities` | `ProviderCapabilities` | Address families supported, route reflection support, BFD support. |
+| `capabilities` | `ProviderCapabilities` | Address families supported, route reflection support, BFD support. Populated from the agent's response at reconcile time. |
 | `resolvedEndpoint` | `string` | The gRPC endpoint that was validated and connected. |
-| `daemon` | `string` | The daemon type as confirmed by the health check (`FRR` or `GoBGP`). |
+| `daemon` | `string` | Reflects `spec.type` — the agent type label set at bootstrap time. |
 
 **ProviderCapabilities**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `addressFamilies` | `[]AddressFamilyCapability` | AFI/SAFI combinations supported by this daemon. |
-| `routeReflection` | `bool` | Whether the daemon supports route reflector operation. |
-| `bfd` | `bool` | Whether the daemon supports BFD. |
+| `addressFamilies` | `[]AddressFamilyCapability` | AFI/SAFI combinations supported by this agent. |
+| `routeReflection` | `bool` | Whether the agent supports route reflector operation. |
+| `bfd` | `bool` | Whether the agent supports BFD. |
 
 **BGPProvider Conditions**
 
 | Type | Meaning |
 |------|---------|
-| `Ready` | `True` when the daemon is reachable and healthy. `False` when the daemon is unreachable or returned an error on the health check. |
-| `RemoteProviderNotSupported` | Set when `endpoint` is not a loopback address. Cosmos only supports local daemon connections. |
+| `Ready` | `True` when the remote agent is reachable and responsive on `spec.endpoint`. `False` when the connection fails or the health probe returns an error. |
+| `InvalidEndpoint` | Set when `spec.endpoint` is absent or malformed. |
+| `DeletionBlocked` | Set when deletion is blocked because a BGPInstance, BGPPeer, BGPAdvertisement, or BGPRoutePolicy still selects this provider. |
 
 #### Example
 
@@ -136,9 +136,12 @@ See [`pop-bgpprovider-auto.yaml`](../examples/pop-bgpprovider-auto.yaml).
 
 ### BGPInstance
 
-`BGPInstance` declares the BGP speaker configuration for a daemon: the local AS, router ID, address families, optional BGP timers, and best-path settings. One BGPInstance is created per plane per node (one for underlay FRR, one for overlay GoBGP).
+`BGPInstance` declares the BGP speaker configuration for an agent: the local AS,
+router ID, address families, optional BGP timers, and best-path settings. One
+BGPInstance is created per plane per node.
 
-When `routeReflector` is set, the instance configures the daemon as a route reflector for the specified cluster ID. This field is only valid in infra clusters.
+When `routeReflector` is set, the instance configures the agent as a route
+reflector for the specified cluster ID. This field is only valid in infra clusters.
 
 #### Spec
 
@@ -192,7 +195,7 @@ When `routeReflector` is set, the instance configures the daemon as a route refl
 
 | Type | Meaning |
 |------|---------|
-| `Ready` | `True` when the speaker has been configured in the daemon with the spec AS, router ID, and address families. |
+| `Ready` | `True` when the speaker has been configured in the agent with the spec AS, router ID, and address families. |
 | `RouteReflectorInPOPCluster` | Set when `spec.routeReflector` is present on a POP cluster node. Route reflection is not supported in POP clusters. |
 
 #### Examples
@@ -205,9 +208,11 @@ See [`pop-bgpinstance-underlay.yaml`](../examples/pop-bgpinstance-underlay.yaml)
 
 ### BGPPeer
 
-`BGPPeer` represents one side of a configured BGP session within a daemon. BGPPeer resources are created directly — operators write them in the management cluster and Karmada propagates them to POP and infra clusters.
+`BGPPeer` represents one side of a configured BGP session within an agent.
+BGPPeer resources are created directly — operators write them in the management
+cluster and Karmada propagates them to POP and infra clusters.
 
-Each BGPPeer is reconciled by the PeerReconciler, which calls `AddPeer`/`UpdatePeer`/`DeletePeer` on the daemon.
+Each BGPPeer is reconciled by the PeerReconciler, which calls `AddPeer`/`UpdatePeer`/`DeletePeer` on the agent.
 
 #### Spec
 
@@ -221,7 +226,7 @@ Each BGPPeer is reconciled by the PeerReconciler, which calls `AddPeer`/`UpdateP
 | `addressFamilies` | `[]AddressFamily` | No | Address families to negotiate. If absent, inherited from the referenced BGPInstance. |
 | `timers` | `BGPPeerTimers` | No | Per-peer timer overrides. |
 | `allowAsIn` | `*int32` | No | Number of times the peer's AS is allowed in received AS paths. Range: 1–10. |
-| `routeReflectorClient` | `bool` | No | When `true`, the daemon treats this peer as a route reflector client. |
+| `routeReflectorClient` | `bool` | No | When `true`, the agent treats this peer as a route reflector client. |
 | `passive` | `bool` | No | Enables passive mode — do not initiate the TCP connection. Default: false. |
 | `ebgpMultihop` | `*int32` | No | eBGP multihop TTL. Range: 1–255. Mutually exclusive with `ttlSecurity`. Invalid on iBGP sessions. |
 | `ttlSecurity` | `*int32` | No | GTSM minimum expected TTL for incoming eBGP packets. Range: 1–254. Mutually exclusive with `ebgpMultihop`. |
@@ -253,22 +258,26 @@ Each BGPPeer is reconciled by the PeerReconciler, which calls `AddPeer`/`UpdateP
 
 | Type | Meaning |
 |------|---------|
-| `Configured` | `True` when the peer has been successfully registered in the daemon via `AddPeer`/`UpdatePeer`. |
+| `Configured` | `True` when the peer has been successfully registered in the agent via `AddPeer`/`UpdatePeer`. |
 | `SessionEstablished` | `True` when the BGP FSM for this peer is in `Established` state. Refreshed on a polling interval. |
 
 ---
 
 ### BGPAdvertisement
 
-`BGPAdvertisement` declares infrastructure prefixes to inject into the BGP RIB. Typical uses are loopback addresses and SRv6 locator blocks. The AdvertisementReconciler calls `AddPath` on the daemon; on deletion it calls `DeletePath`.
+`BGPAdvertisement` declares infrastructure prefixes to inject into the BGP RIB.
+Typical uses are loopback addresses and SRv6 locator blocks. The
+AdvertisementReconciler calls `AddPath` on the agent; on deletion it calls
+`DeletePath`.
 
-BGPAdvertisement targets the **underlay FRR** plane for IPv6 unicast prefixes. VPN address families are not supported on this resource.
+BGPAdvertisement targets providers with Unicast address families. VPN address
+families are not supported on this resource.
 
 #### Spec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `instanceRef` | `string` | Yes | Name of the BGPInstance to advertise through. Must reference an instance bound to FRR providers with Unicast families. |
+| `instanceRef` | `string` | Yes | Name of the BGPInstance to advertise through. Must reference an instance bound to providers with Unicast address families. |
 | `prefixes` | `[]string` | Yes | IPv4 or IPv6 unicast CIDR prefixes to advertise. Minimum 1. |
 | `peerSelector` | `metav1.LabelSelector` | No | Restricts advertisement to matched BGPPeer resources. If absent, advertise to all peers on matched providers. |
 
@@ -283,16 +292,20 @@ BGPAdvertisement targets the **underlay FRR** plane for IPv6 unicast prefixes. V
 
 | Type | Meaning |
 |------|---------|
-| `Advertised` | `True` when all prefixes have been injected into the daemon RIB. |
+| `Advertised` | `True` when all prefixes have been injected into the agent RIB. |
 | `UnsupportedAddressFamily` | Set when the referenced instance's address family is not supported (e.g., VPN SAFI). |
 
 ---
 
 ### BGPRoutePolicy
 
-`BGPRoutePolicy` declares import and/or export filtering rules for a BGP instance. The RoutePolicyReconciler applies defined sets and policies via the daemon's policy API. Statements within each direction are evaluated in order; the first match wins.
+`BGPRoutePolicy` declares import and/or export filtering rules for a BGP instance.
+The RoutePolicyReconciler applies defined sets and policies via the agent's policy
+API. Statements within each direction are evaluated in order; the first match wins.
 
-Multiple BGPRoutePolicy resources can apply to the same instance and peer set. They are evaluated in descending `priority` order; equal-priority policies are sorted by `metadata.name` ascending.
+Multiple BGPRoutePolicy resources can apply to the same instance and peer set.
+They are evaluated in descending `priority` order; equal-priority policies are
+sorted by `metadata.name` ascending.
 
 #### Spec
 
@@ -347,13 +360,16 @@ Multiple BGPRoutePolicy resources can apply to the same instance and peer set. T
 
 | Type | Meaning |
 |------|---------|
-| `Applied` | `True` when the policy has been installed in the daemon policy table. |
+| `Applied` | `True` when the policy has been installed in the agent policy table. |
 
 ---
 
 ### BGPExternalPeer
 
-`BGPExternalPeer` is the registry of BGP peers that exist outside the cosmos fleet: top-of-rack switches, upstream transit routers, and other external devices. Resources live in the management cluster only and are never propagated to POP or infra clusters.
+`BGPExternalPeer` is the registry of BGP peers that exist outside the cosmos
+fleet: top-of-rack switches, upstream transit routers, and other external devices.
+Resources live in the management cluster only and are never propagated to POP or
+infra clusters.
 
 #### Spec
 
@@ -377,32 +393,47 @@ See [`mgmt-bgpexternalpeer-tor.yaml`](../examples/mgmt-bgpexternalpeer-tor.yaml)
 
 ## 4. Design Principles
 
-**Provider abstraction.** All reconciliation is mediated through BGPProvider. Controllers never talk to a daemon directly — they reconcile through the provider API. This allows FRR and GoBGP to be driven by the same controller logic with different backends.
+**Provider abstraction.** All reconciliation is mediated through BGPProvider.
+Controllers never talk to an agent directly — they reconcile through the provider
+interface. Any BGP agent that implements `BGPProviderService` can be used; cosmos
+drives all of them identically.
 
-**Labels drive dispatch.** Controllers select providers, instances, and peers using `metav1.LabelSelector`. This makes topology configuration declarative and allows dynamic reassignment by changing labels.
+**Labels drive dispatch.** Controllers select providers, instances, and peers
+using `metav1.LabelSelector`. This makes topology configuration declarative and
+allows dynamic reassignment by changing labels.
 
-**Per-provider status.** BGPInstance, BGPPeer, BGPAdvertisement, and BGPRoutePolicy each carry a `providers` list in their status. If a selector matches multiple providers (e.g., on a multi-daemon node), each provider's reconciliation state is tracked independently.
+**Per-provider status.** BGPInstance, BGPPeer, BGPAdvertisement, and
+BGPRoutePolicy each carry a `providers` list in their status. If a selector
+matches multiple providers (e.g., on a multi-plane node), each provider's
+reconciliation state is tracked independently.
 
-**Management cluster as source of truth.** BGPPeer and BGPExternalPeer live authoritatively in the management cluster. Karmada propagates BGPPeer resources to target clusters. The management cluster never runs BGP daemons.
+**Management cluster as source of truth.** BGPPeer and BGPExternalPeer live
+authoritatively in the management cluster. Karmada propagates BGPPeer resources
+to target clusters. The management cluster never runs BGP agents.
 
-**Daemon lifecycle separation.** The BGPProvider auto-bootstrap at cosmos startup is separate from the reconciliation controllers. Providers are always present before any BGPInstance or BGPPeer reconciliation begins.
+**Agent lifecycle separation.** The BGPProvider auto-bootstrap at cosmos startup
+is separate from the reconciliation controllers. Providers are always present
+before any BGPInstance or BGPPeer reconciliation begins.
 
 ---
 
-## 5. Operational Contract — GoBGP API Ownership
+## 5. Provider Ownership
 
-When a CNI plugin and cosmos both interact with the GoBGP daemon on the same node, the following ownership boundaries apply. Violating these boundaries will cause reconciliation conflicts or session disruption.
+When a CNI plugin and cosmos both send calls to the same remote agent, the
+following ownership boundaries apply. Violating these boundaries will cause
+reconciliation conflicts or session disruption.
 
-| GoBGP API surface | Owner |
+| API surface | Owner |
 |---|---|
-| `StartBgp`, speaker config | Cosmos exclusively |
-| `AddPeer` / `UpdatePeer` / `DeletePeer` | Cosmos exclusively |
-| `AddPolicy` / `AddDefinedSet` and all route policy | Cosmos exclusively |
-| `AddVrf` / `DeleteVrf` | CNI exclusively |
-| `AddPath` / `DeletePath` | CNI exclusively |
-| `ListPeer` / `ListPath` (read-only) | Either |
+| Speaker config (AS, router ID, address families) | Cosmos exclusively |
+| Peer add / update / delete | Cosmos exclusively |
+| Route policy add / update / delete | Cosmos exclusively |
+| VRF add / delete | CNI exclusively |
+| Path add / delete for tenant routes | CNI exclusively |
+| Read-only queries (peer list, path list) | Either |
 
-Cosmos does not manage VRF instances or tenant path injection. The CNI plugin manages VRF lifecycle independently of cosmos.
+Cosmos does not manage VRF instances or tenant path injection. The CNI plugin
+manages VRF lifecycle independently of cosmos.
 
 ---
 
@@ -414,9 +445,13 @@ All resources in both API groups carry the finalizer:
 cosmos.bgp.miloapis.com/cleanup
 ```
 
-The cleanup finalizer ensures that daemon state is removed before the Kubernetes object is deleted. The reconciler removes daemon state (peers, policies, advertisements), then removes the finalizer.
+The cleanup finalizer ensures that agent state is removed before the Kubernetes
+object is deleted. The reconciler removes agent state (peers, policies,
+advertisements), then removes the finalizer.
 
-A resource stuck in `Terminating` state means the cleanup finalizer has not been removed. This can happen when the controller is not running, the daemon is unreachable, or a dependency check is blocking deletion.
+A resource stuck in `Terminating` state means the cleanup finalizer has not been
+removed. This can happen when the controller is not running, the agent is
+unreachable, or a dependency check is blocking deletion.
 
 **To force-remove a stuck resource (destructive):**
 
@@ -424,15 +459,22 @@ A resource stuck in `Terminating` state means the cleanup finalizer has not been
 kubectl patch <kind>/<name> --type=merge -p '{"metadata":{"finalizers":[]}}'
 ```
 
-> **Warning:** Forcing finalizer removal bypasses daemon cleanup. Any peers, policies, or routes the resource managed will remain in the daemon until the next full reconciliation or daemon restart. Use this only when the daemon state is already known to be gone (e.g., daemon was rebuilt) or when you are intentionally abandoning orphaned daemon state.
+> **Warning:** Forcing finalizer removal bypasses agent cleanup. Any peers,
+> policies, or routes the resource managed will remain in the agent until the
+> next full reconciliation or agent restart. Use this only when the agent state
+> is already known to be gone (e.g., agent was rebuilt) or when you are
+> intentionally abandoning orphaned agent state.
 
 ### Dependency-blocked deletion
 
 Some resources block deletion until their dependents are removed:
 
-- **BGPProvider**: deletion is blocked if any BGPInstance, BGPPeer, BGPAdvertisement, or BGPRoutePolicy still selects this provider. Remove those resources first.
+- **BGPProvider**: deletion is blocked if any BGPInstance, BGPPeer,
+  BGPAdvertisement, or BGPRoutePolicy still selects this provider. Remove those
+  resources first.
 
-The `DeletionBlocked` condition is set on the resource to indicate which dependency is preventing deletion.
+The `DeletionBlocked` condition is set on the resource to indicate which
+dependency is preventing deletion.
 
 ---
 
@@ -442,23 +484,27 @@ Resources use one of two status layouts depending on their scope.
 
 ### Per-provider status
 
-Resources that are reconciled against one or more daemon instances carry a `providers` list in their status. Each entry has a `providerName` key and a `conditions` array for that provider. The entry also carries a `daemon` field (the daemon type) and an optional `resolvedConfig` field (the configuration actually applied).
+Resources that are reconciled against one or more agent instances carry a
+`providers` list in their status. Each entry has a `providerName` key and a
+`conditions` array for that provider. The entry also carries a `daemon` field
+(the agent type from `spec.type`) and an optional `resolvedConfig` field (the
+configuration actually applied).
 
 This applies to: **BGPInstance**, **BGPPeer**, **BGPAdvertisement**, **BGPRoutePolicy**.
 
 ```yaml
 status:
   providers:
-    - providerName: node-1-frr
-      daemon: FRR
+    - providerName: node-1-underlay
+      daemon: underlay
       conditions:
         - type: Ready
           status: "True"
           reason: Configured
           message: "Speaker configured with AS 65000"
           lastTransitionTime: "2024-01-01T00:00:00Z"
-    - providerName: node-2-frr
-      daemon: FRR
+    - providerName: node-2-underlay
+      daemon: underlay
       conditions:
         - type: Ready
           status: "False"
@@ -471,7 +517,8 @@ If `providerRef` is used instead of `providerSelector`, the list will contain ex
 
 ### Flat status
 
-Resources that are not reconciled against a daemon, or that represent single objects, carry a flat `conditions` array.
+Resources that are not reconciled against an agent, or that represent single
+objects, carry a flat `conditions` array.
 
 This applies to: **BGPProvider**, **BGPExternalPeer**.
 
@@ -481,7 +528,7 @@ status:
     - type: Ready
       status: "True"
       reason: DaemonResponsive
-      message: "FRR daemon is reachable"
+      message: "Remote BGP agent is reachable"
       lastTransitionTime: "2024-01-01T00:00:00Z"
 ```
 
@@ -489,12 +536,14 @@ status:
 
 ## 8. Metrics
 
-Operational counters for BGP sessions are exposed as Prometheus metrics rather than CRD status fields. This avoids high-frequency status writes and eliminates multi-writer races in DaemonSet deployments.
+Operational counters for BGP sessions are exposed as Prometheus metrics rather
+than CRD status fields. This avoids high-frequency status writes and eliminates
+multi-writer races in DaemonSet deployments.
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
 | `bgp_advertised_prefixes_total` | `advertisement` | Prefixes advertised per BGPAdvertisement. |
-| `bgp_route_policies_applied` | `policy` | 1 if the policy is applied to the daemon, 0 otherwise. |
+| `bgp_route_policies_applied` | `policy` | 1 if the policy is applied to the provider, 0 otherwise. |
 
 Metrics are scraped from each cosmos controller pod on `:8082/metrics`.
 

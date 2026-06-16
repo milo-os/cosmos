@@ -25,11 +25,8 @@ import (
 // after a daemon restart without first querying existing state.
 type Provider interface {
 	// ConfigureSpeaker applies BGPInstance-level configuration. Idempotent.
-	// On daemons that require a restart to change AS or router-ID (e.g. GoBGP
-	// StartBgp/StopBgp), the implementation is responsible for detecting the
-	// change and performing the restart transparently.
-	// Returns (true, nil) when the daemon was restarted; peers must be re-applied
-	// by the caller because a restart wipes all session state.
+	// Returns (true, nil) when the remote agent was restarted; peers must be
+	// re-applied by the caller because a restart wipes all session state.
 	ConfigureSpeaker(ctx context.Context, spec SpeakerSpec) (restarted bool, err error)
 
 	// AddOrUpdatePeer configures a BGP session. Idempotent.
@@ -50,9 +47,7 @@ type Provider interface {
 	// DeletePolicy removes a route policy. Idempotent.
 	DeletePolicy(ctx context.Context, policyName string) error
 
-	// Ready returns nil if the daemon is reachable and responsive.
-	// Implementations should use a lightweight probe (e.g. GetBgp for GoBGP,
-	// a gRPC health check for FRR) rather than establishing a new connection.
+	// Ready returns nil if the remote agent is reachable and responsive.
 	Ready(ctx context.Context) error
 
 	// Capabilities returns the provider's capability set.
@@ -73,9 +68,6 @@ type AddressFamily struct {
 type SpeakerSpec struct {
 	ASNumber int64
 	RouterID string
-	// ListenPort is 179 for FRR (standard BGP port). For GoBGP, it is 1790 on the
-	// route reflector and -1 (listener disabled) on worker nodes, which only connect
-	// outbound to the RR.
 	ListenPort     int32
 	Families       []AddressFamily
 	Timers         TimerConfig

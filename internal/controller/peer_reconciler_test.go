@@ -61,7 +61,7 @@ func TestPeerReconcilerEVPNAddressFamily(t *testing.T) {
 			Name:   "node-a",
 			Labels: map[string]string{"role": "vtep"},
 		},
-		Spec: providersv1alpha1.BGPProviderSpec{Type: "FRR"},
+		Spec: providersv1alpha1.BGPProviderSpec{Type: "test-agent"},
 	}
 	bgpPeer := &bgpv1alpha1.BGPPeer{
 		ObjectMeta: metav1.ObjectMeta{Name: "evpn-peer"},
@@ -130,7 +130,7 @@ func TestPeerReconcilerEVPNInheritedFromInstance(t *testing.T) {
 			Name:   "node-a",
 			Labels: map[string]string{"role": "vtep"},
 		},
-		Spec: providersv1alpha1.BGPProviderSpec{Type: "FRR"},
+		Spec: providersv1alpha1.BGPProviderSpec{Type: "test-agent"},
 	}
 	// BGPPeer carries no addressFamilies — must inherit from instance.
 	bgpPeer := &bgpv1alpha1.BGPPeer{

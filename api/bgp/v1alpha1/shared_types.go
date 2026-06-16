@@ -31,7 +31,7 @@ type ProviderStatus struct {
 	// ProviderName is the name of the BGPProvider this entry describes.
 	ProviderName string `json:"providerName"`
 
-	// Daemon is the daemon type (FRR or GoBGP).
+	// Daemon is the agent type reported by the BGPProvider.
 	Daemon string `json:"daemon"`
 
 	// Conditions are the per-provider conditions.

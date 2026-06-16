@@ -54,7 +54,7 @@ spec:
               instanceRef:
                 description: |-
                   InstanceRef is the name of the BGPInstance to advertise through.
-                  Must reference a BGPInstance bound to FRR providers with Unicast families.
+                  Must reference a BGPInstance bound to providers with Unicast address families.
                 type: string
               peerSelector:
                 description: |-
@@ -247,7 +247,7 @@ spec:
                       - type
                       x-kubernetes-list-type: map
                     daemon:
-                      description: Daemon is the daemon type (FRR or GoBGP).
+                      description: Daemon is the agent type reported by the BGPProvider.
                       type: string
                     providerName:
                       description: ProviderName is the name of the BGPProvider this
