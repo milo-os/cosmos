@@ -56,7 +56,6 @@ type BGPVRFInstanceSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=32
 	ExportRouteTargets []RouteTarget `json:"exportRouteTargets"`
-
 }
 
 // RouteTarget is a BGP extended community in "ASN:NN" or "IP:NN" format.
