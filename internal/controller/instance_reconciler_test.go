@@ -58,8 +58,8 @@ func TestListenPortPassthrough(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &stubProvider{}
-			reg := provider.NewRegistry()
-			reg.Set("test-provider", stub)
+			pool := provider.NewPool()
+			pool.SetForTest("test-provider", stub)
 
 			instance := &bgpv1alpha1.BGPInstance{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-instance"},
@@ -88,9 +88,9 @@ func TestListenPortPassthrough(t *testing.T) {
 				Build()
 
 			r := &InstanceReconciler{
-				Client:   fakeClient,
-				Scheme:   scheme,
-				Registry: reg,
+				Client: fakeClient,
+				Scheme: scheme,
+				Pool:   pool,
 			}
 
 			if err := r.reconcileForProvider(context.Background(), instance, bp); err != nil {
@@ -125,8 +125,8 @@ func TestListenPortExplicitOverride(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &stubProvider{}
-			reg := provider.NewRegistry()
-			reg.Set("test-provider", stub)
+			pool := provider.NewPool()
+			pool.SetForTest("test-provider", stub)
 
 			instance := &bgpv1alpha1.BGPInstance{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-instance"},
@@ -156,9 +156,9 @@ func TestListenPortExplicitOverride(t *testing.T) {
 				Build()
 
 			r := &InstanceReconciler{
-				Client:   fakeClient,
-				Scheme:   scheme,
-				Registry: reg,
+				Client: fakeClient,
+				Scheme: scheme,
+				Pool:   pool,
 			}
 
 			if err := r.reconcileForProvider(context.Background(), instance, bp); err != nil {
@@ -176,8 +176,8 @@ func TestListenPortExplicitOverride(t *testing.T) {
 // number and router ID from the BGPInstance spec to ConfigureSpeaker unchanged.
 func TestSpeakerSpecPropagation(t *testing.T) {
 	stub := &stubProvider{}
-	reg := provider.NewRegistry()
-	reg.Set("test-provider", stub)
+	pool := provider.NewPool()
+	pool.SetForTest("test-provider", stub)
 
 	instance := &bgpv1alpha1.BGPInstance{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-instance"},
@@ -205,9 +205,9 @@ func TestSpeakerSpecPropagation(t *testing.T) {
 		Build()
 
 	r := &InstanceReconciler{
-		Client:   fakeClient,
-		Scheme:   scheme,
-		Registry: reg,
+		Client: fakeClient,
+		Scheme: scheme,
+		Pool:   pool,
 	}
 
 	if err := r.reconcileForProvider(context.Background(), instance, bp); err != nil {

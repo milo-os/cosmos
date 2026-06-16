@@ -7,8 +7,7 @@ metadata:
     bgp.miloapis.com/daemon: GoBGP
 spec:
   type: GoBGP
-  gobgp:
-    endpoint: "localhost:50051"
+  endpoint: "localhost:50051"
 ---
 apiVersion: providers.bgp.miloapis.com/v1alpha1
 kind: BGPProvider
@@ -19,8 +18,7 @@ metadata:
     bgp.miloapis.com/daemon: GoBGP
 spec:
   type: GoBGP
-  gobgp:
-    endpoint: "localhost:50051"
+  endpoint: "localhost:50051"
 ---
 apiVersion: providers.bgp.miloapis.com/v1alpha1
 kind: BGPProvider
@@ -31,5 +29,4 @@ metadata:
     bgp.miloapis.com/daemon: GoBGP
 spec:
   type: GoBGP
-  gobgp:
-    endpoint: "localhost:50051"
+  endpoint: "localhost:50051"

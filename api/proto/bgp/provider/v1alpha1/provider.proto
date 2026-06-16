@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package bgp.provider.v1alpha1;
+
+option go_package = "go.miloapis.com/cosmos/api/proto/bgp/provider/v1alpha1;providerv1alpha1";
+
+service BGPProviderService {
+  rpc ConfigureSpeaker(ConfigureSpeakerRequest) returns (ConfigureSpeakerResponse);
+  rpc AddOrUpdatePeer(AddOrUpdatePeerRequest)   returns (AddOrUpdatePeerResponse);
+  rpc DeletePeer(DeletePeerRequest)             returns (DeletePeerResponse);
+  rpc AddOrUpdateAdvertisement(AddOrUpdateAdvertisementRequest) returns (AddOrUpdateAdvertisementResponse);
+  rpc DeleteAdvertisement(DeleteAdvertisementRequest)           returns (DeleteAdvertisementResponse);
+  rpc AddOrUpdatePolicy(AddOrUpdatePolicyRequest) returns (AddOrUpdatePolicyResponse);
+  rpc DeletePolicy(DeletePolicyRequest)           returns (DeletePolicyResponse);
+  rpc Ready(ReadyRequest)                         returns (ReadyResponse);
+  rpc Capabilities(CapabilitiesRequest)           returns (CapabilitiesResponse);
+}
+
+message ConfigureSpeakerRequest  { SpeakerSpec spec = 1; }
+message ConfigureSpeakerResponse { bool restarted = 1; }
+
+message SpeakerSpec {
+  int64            as_number       = 1;
+  string           router_id       = 2;
+  int32            listen_port     = 3;
+  repeated AddressFamily families  = 4;
+  TimerConfig      timers          = 5;
+  BestPathConfig   best_path       = 6;
+  RouteReflectorConfig route_reflector = 7;
+}
+
+message TimerConfig {
+  int32 hold_time  = 1;
+  int32 keepalive  = 2;
+}
+
+message BestPathConfig {
+  bool always_compare_med  = 1;
+  bool deterministic_med   = 2;
+  bool compare_router_id   = 3;
+}
+
+message RouteReflectorConfig { string cluster_id = 1; }
+
+message AddOrUpdatePeerRequest  { PeerSpec peer = 1; }
+message AddOrUpdatePeerResponse {}
+
+message DeletePeerRequest  { string address = 1; }
+message DeletePeerResponse {}
+
+message PeerSpec {
+  string         address               = 1;
+  int64          as_number             = 2;
+  repeated AddressFamily families      = 3;
+  TimerConfig    timers                = 4;
+  int32          allow_as_in           = 5;
+  bool           route_reflector_client = 6;
+  bool           passive               = 7;
+  optional int32 ebgp_multihop         = 8;
+  optional int32 ttl_security          = 9;
+  string         password              = 10;
+  int32          remote_port           = 11;
+}
+
+message AddOrUpdateAdvertisementRequest  { AdvertisementSpec advertisement = 1; }
+message AddOrUpdateAdvertisementResponse {}
+
+message DeleteAdvertisementRequest  { string prefix = 1; }
+message DeleteAdvertisementResponse {}
+
+message AdvertisementSpec {
+  repeated string prefixes        = 1;
+  repeated string peer_addresses  = 2;
+}
+
+message AddOrUpdatePolicyRequest  { PolicySpec policy = 1; }
+message AddOrUpdatePolicyResponse {}
+
+message DeletePolicyRequest  { string policy_name = 1; }
+message DeletePolicyResponse {}
+
+message PolicySpec {
+  string   name                          = 1;
+  int32    priority                      = 2;
+  repeated PolicyStatement import_statements = 3;
+  repeated PolicyStatement export_statements = 4;
+}
+
+message PolicyStatement {
+  string            name       = 1;
+  PolicyConditions  conditions = 2;
+  PolicyActions     actions    = 3;
+}
+
+message PolicyConditions {
+  repeated string prefix_sets  = 1;
+  string          community_set = 2;
+  string          next_hop_set  = 3;
+}
+
+message PolicyActions {
+  string               route_disposition    = 1;
+  SetCommunityAction   set_community        = 2;
+  optional int32       set_local_preference = 3;
+  optional int32       set_med              = 4;
+  string               set_next_hop         = 5;
+}
+
+message SetCommunityAction {
+  repeated string communities = 1;
+  string          method      = 2;
+}
+
+message ReadyRequest  {}
+message ReadyResponse {}
+
+message CapabilitiesRequest  {}
+message CapabilitiesResponse { CapabilitySet capabilities = 1; }
+
+message CapabilitySet {
+  repeated AddressFamily address_families = 1;
+  bool route_reflection                   = 2;
+  bool bfd                                = 3;
+}
+
+message AddressFamily {
+  string afi  = 1;
+  string safi = 2;
+}

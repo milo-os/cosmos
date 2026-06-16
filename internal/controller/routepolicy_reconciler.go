@@ -29,7 +29,7 @@ import (
 type RoutePolicyReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Registry *provider.Registry
+	Pool     *provider.Pool
 	NodeName string // from NODE_NAME env var
 }
 
@@ -126,13 +126,13 @@ func (r *RoutePolicyReconciler) reconcileForProvider(
 	_ []bgpv1alpha1.BGPRoutePolicy,
 	matchedPeers []bgpv1alpha1.BGPPeer,
 ) error {
-	impl, ok := r.Registry.Get(bp.Name)
+	impl, ok := r.Pool.GetByName(bp.Name)
 	if !ok {
 		if r.NodeName != "" && bp.Labels[LabelNode] != r.NodeName {
 			return nil
 		}
 		return r.writePolicyProviderStatus(ctx, pol, bp.Name, bp.Spec.Type, false,
-			"DaemonUnavailable", "provider not in registry — daemon may be starting")
+			"DaemonUnavailable", "provider not in pool — daemon may be starting")
 	}
 
 	// Build peer addresses for the policy spec.
@@ -278,7 +278,7 @@ func (r *RoutePolicyReconciler) handleDelete(ctx context.Context, pol *bgpv1alph
 
 	blocked := false
 	for _, ps := range pol.Status.Providers {
-		impl, ok := r.Registry.Get(ps.ProviderName)
+		impl, ok := r.Pool.GetByName(ps.ProviderName)
 		if !ok {
 			continue
 		}

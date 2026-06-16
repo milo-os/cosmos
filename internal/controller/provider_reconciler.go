@@ -37,17 +37,12 @@ const (
 	providerHealthRequeue = 30 * time.Second
 )
 
-// ProviderFactory constructs a provider.Provider for the given daemon type and endpoint.
-// Callers are responsible for injecting implementations; cosmos ships no built-in providers.
-type ProviderFactory func(daemonType, endpoint string) (provider.Provider, error)
-
 // ProviderReconciler reconciles BGPProvider resources.
-// It auto-bootstraps local providers at startup and maintains provider health status.
+// It connects to the remote provider agent via the Pool and maintains provider health status.
 type ProviderReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Registry *provider.Registry
-	Factory  ProviderFactory
+	Pool     *provider.Pool
 	NodeName string // from NODE_NAME env var
 }
 
@@ -64,9 +59,8 @@ func (r *ProviderReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 	}
 
 	// Only manage providers that belong to this node.
-	// Each DaemonSet pod's controller only connects to its own local daemon (localhost).
-	// Attempting to reconcile remote-node providers would register them against the
-	// wrong daemon and corrupt peer state on unrelated GoBGP/FRR instances.
+	// Each DaemonSet pod connects only to the agent running on its own node.
+	// Attempting to reconcile another node's providers would corrupt that node's BGP state.
 	if r.NodeName != "" && bgpProvider.Labels[LabelNode] != r.NodeName {
 		return ctrl.Result{}, nil
 	}
@@ -96,27 +90,26 @@ func (r *ProviderReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 			fmt.Sprintf("endpoint %q is malformed: %v", endpoint, err))
 	}
 
-	// Ensure provider implementation exists in the registry.
-	if _, ok := r.Registry.Get(bgpProvider.Name); !ok {
-		impl, err := r.newProviderImpl(&bgpProvider, endpoint)
-		if err != nil {
-			return r.setProviderCondition(ctx, &bgpProvider, "Ready", metav1.ConditionFalse, "DaemonUnreachable",
-				fmt.Sprintf("create provider implementation: %v", err))
-		}
-		r.Registry.Set(bgpProvider.Name, impl)
+	// Get or create a gRPC connection to the provider agent.
+	impl, err := r.Pool.Get(endpoint)
+	if err != nil {
+		return r.setProviderCondition(ctx, &bgpProvider, "Ready", metav1.ConditionFalse, "DaemonUnreachable",
+			fmt.Sprintf("connect to provider: %v", err))
 	}
-
-	impl, _ := r.Registry.Get(bgpProvider.Name)
 
 	// Health probe.
 	readyErr := impl.Ready(ctx)
 	if readyErr != nil {
 		log.Printf("bgp/provider: %s daemon not responsive: %v", bgpProvider.Name, readyErr)
-		// Remove stale impl so it gets recreated with a fresh connection next cycle.
-		r.Registry.Delete(bgpProvider.Name)
+		// Release stale connection so a fresh one is created on next cycle.
+		r.Pool.Release(endpoint)
+		r.Pool.Unregister(bgpProvider.Name)
 		return r.setProviderCondition(ctx, &bgpProvider, "Ready", metav1.ConditionFalse, "DaemonUnreachable",
 			fmt.Sprintf("daemon not responsive: %v", readyErr))
 	}
+
+	// Register name->endpoint so other reconcilers can look up by name.
+	r.Pool.Register(bgpProvider.Name, endpoint)
 
 	// Query capabilities.
 	caps, capsErr := impl.Capabilities(ctx)
@@ -146,7 +139,7 @@ func (r *ProviderReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 	return ctrl.Result{RequeueAfter: providerHealthRequeue}, nil
 }
 
-// handleDelete blocks deletion if any referencing resources exist, then removes the finalizer.
+// handleDelete releases the gRPC connection and removes the finalizer.
 func (r *ProviderReconciler) handleDelete(ctx context.Context, bgpProvider *providersv1alpha1.BGPProvider) error {
 	if !controllerutil.ContainsFinalizer(bgpProvider, Finalizer) {
 		return nil
@@ -187,8 +180,12 @@ func (r *ProviderReconciler) handleDelete(ctx context.Context, bgpProvider *prov
 		}
 	}
 
-	// Clear from registry, then remove finalizer.
-	r.Registry.Delete(bgpProvider.Name)
+	// Release connection and unregister name, then remove finalizer.
+	if endpoint, err := endpointFromSpec(bgpProvider); err == nil {
+		r.Pool.Release(endpoint)
+	}
+	r.Pool.Unregister(bgpProvider.Name)
+
 	patch := client.MergeFrom(bgpProvider.DeepCopy())
 	controllerutil.RemoveFinalizer(bgpProvider, Finalizer)
 	return r.Patch(ctx, bgpProvider, patch)
@@ -234,27 +231,12 @@ func (r *ProviderReconciler) setProviderCondition(
 	return ctrl.Result{RequeueAfter: providerHealthRequeue}, nil
 }
 
-// newProviderImpl delegates to the injected Factory to construct a provider.
-func (r *ProviderReconciler) newProviderImpl(bgpProvider *providersv1alpha1.BGPProvider, endpoint string) (provider.Provider, error) {
-	if r.Factory == nil {
-		return nil, fmt.Errorf("no provider factory configured")
-	}
-	return r.Factory(bgpProvider.Spec.Type, endpoint)
-}
-
-// endpointFromSpec extracts the configured endpoint from a BGPProvider spec.
+// endpointFromSpec returns the gRPC endpoint for a BGPProvider.
 func endpointFromSpec(bgpProvider *providersv1alpha1.BGPProvider) (string, error) {
-	switch bgpProvider.Spec.Type {
-	case "FRR":
-		if bgpProvider.Spec.FRR != nil {
-			return bgpProvider.Spec.FRR.Endpoint, nil
-		}
-	case "GoBGP":
-		if bgpProvider.Spec.GoBGP != nil {
-			return bgpProvider.Spec.GoBGP.Endpoint, nil
-		}
+	if bgpProvider.Spec.Endpoint == "" {
+		return "", fmt.Errorf("spec.endpoint is not set")
 	}
-	return "", fmt.Errorf("no endpoint configured for type %q", bgpProvider.Spec.Type)
+	return bgpProvider.Spec.Endpoint, nil
 }
 
 // labelsForProvider returns the labels of a BGPProvider as a labels.Set for selector matching.

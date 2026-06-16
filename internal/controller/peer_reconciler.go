@@ -29,7 +29,7 @@ import (
 type PeerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Registry *provider.Registry
+	Pool     *provider.Pool
 	NodeName string // from NODE_NAME env var; used to distinguish local vs remote providers
 }
 
@@ -214,16 +214,16 @@ func (r *PeerReconciler) reconcileForProvider(
 		RemotePort:           remotePort,
 	}
 
-	impl, ok := r.Registry.Get(bp.Name)
+	impl, ok := r.Pool.GetByName(bp.Name)
 	if !ok {
-		// Remote providers (belonging to a different node) are never in this controller's
-		// registry. Skip them silently — they are reconciled by the correct node's controller.
+		// Remote providers (belonging to a different node) are not in this controller's
+		// pool. Skip them silently — they are reconciled by the correct node's controller.
 		if r.NodeName != "" && bp.Labels[LabelNode] != r.NodeName {
 			return nil
 		}
-		// Local provider not yet in registry — daemon may still be starting up.
+		// Local provider not yet in pool — daemon may still be starting up.
 		return r.writePeerProviderStatus(ctx, peer, bp.Name, bp.Spec.Type, false,
-			"DaemonUnavailable", "provider not in registry — daemon may be starting")
+			"DaemonUnavailable", "provider not in pool — daemon may be starting")
 	}
 
 	if err := impl.AddOrUpdatePeer(ctx, peerSpec); err != nil {
@@ -386,9 +386,9 @@ func (r *PeerReconciler) handleDelete(ctx context.Context, peer *bgpv1alpha1.BGP
 			continue
 		}
 
-		impl, ok := r.Registry.Get(bp.Name)
+		impl, ok := r.Pool.GetByName(bp.Name)
 		if !ok {
-			log.Printf("bgp/peer: delete %s: provider %s not in registry — skipping", peer.Name, bp.Name)
+			log.Printf("bgp/peer: delete %s: provider %s not in pool — skipping", peer.Name, bp.Name)
 			continue
 		}
 		if err := impl.DeletePeer(ctx, peer.Spec.Address); err != nil {

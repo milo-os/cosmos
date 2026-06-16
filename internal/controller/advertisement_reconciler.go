@@ -28,7 +28,7 @@ import (
 type AdvertisementReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Registry *provider.Registry
+	Pool     *provider.Pool
 	NodeName string // from NODE_NAME env var
 }
 
@@ -117,13 +117,13 @@ func (r *AdvertisementReconciler) reconcileForProvider(
 	adv *bgpv1alpha1.BGPAdvertisement,
 	bp *providersv1alpha1.BGPProvider,
 ) error {
-	impl, ok := r.Registry.Get(bp.Name)
+	impl, ok := r.Pool.GetByName(bp.Name)
 	if !ok {
 		if r.NodeName != "" && bp.Labels[LabelNode] != r.NodeName {
 			return nil
 		}
 		return r.writeAdvProviderStatus(ctx, adv, bp.Name, bp.Spec.Type, false,
-			"DaemonUnavailable", "provider not in registry — daemon may be starting")
+			"DaemonUnavailable", "provider not in pool — daemon may be starting")
 	}
 
 	// Resolve peer addresses from peerSelector if set.
@@ -258,11 +258,17 @@ func (r *AdvertisementReconciler) handleDelete(ctx context.Context, adv *bgpv1al
 		return nil
 	}
 
-	// Withdraw from all providers in this pod's local registry.
-	for name, impl := range r.Registry.List() {
+	// Withdraw from each provider that tracked this advertisement.
+	// Iterate over the providers recorded in status rather than the live pool,
+	// so we attempt cleanup even if the pool entry has already been released.
+	for _, ps := range adv.Status.Providers {
+		impl, ok := r.Pool.GetByName(ps.ProviderName)
+		if !ok {
+			continue
+		}
 		for _, prefix := range adv.Spec.Prefixes {
 			if err := impl.DeleteAdvertisement(ctx, prefix); err != nil {
-				log.Printf("bgp/adv: delete prefix %s on provider %s: %v", prefix, name, err)
+				log.Printf("bgp/adv: delete prefix %s on provider %s: %v", prefix, ps.ProviderName, err)
 			}
 		}
 	}
