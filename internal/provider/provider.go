@@ -66,8 +66,8 @@ type AddressFamily struct {
 // SpeakerSpec is the provider-level representation of BGPInstance configuration.
 // It is derived by the controller from a BGPInstance and its associated BGPProvider.
 type SpeakerSpec struct {
-	ASNumber int64
-	RouterID string
+	ASNumber       int64
+	RouterID       string
 	ListenPort     int32
 	Families       []AddressFamily
 	Timers         TimerConfig
