@@ -4,8 +4,8 @@
 
 Cosmos is a BGP control plane for Kubernetes. You define instances, sessions,
 advertisements, and VPCs as Kubernetes resources; the controller reconciles
-them into running [FRR][frr] and [GoBGP][gobgp] daemons on each node and
-programs learned routes into the kernel via [netlink][netlink].
+them into remote BGP agents on each node and programs learned routes into the
+kernel via [netlink][netlink].
 
 **API groups:**
 `bgp.miloapis.com/v1alpha1` · `providers.bgp.miloapis.com/v1alpha1` · `vpc.miloapis.com/v1alpha1`
@@ -14,14 +14,19 @@ programs learned routes into the kernel via [netlink][netlink].
 
 ## How it works
 
-Cosmos runs as a DaemonSet in the `bgp-system` namespace. Each node runs two
-BGP planes:
+Cosmos runs as a DaemonSet in the `bgp-system` namespace. On each node, one or
+more `BGPProvider` resources represent remote BGP agent processes that cosmos
+connects to via gRPC. Each provider exposes the `BGPProviderService` proto
+interface; cosmos has no built-in knowledge of what runs behind it.
 
-- **Underlay** — [FRR][frr] handles IPv6 unicast sessions to top-of-rack switches
-- **Overlay** — [GoBGP][gobgp] handles VPNv4/VPNv6 sessions to regional route reflectors
+BGP CRDs (`BGPInstance`, `BGPPeer`, `BGPAdvertisement`, `BGPRoutePolicy`) select
+providers by label and marshal configuration calls through the provider interface.
+The remote agents implement whatever BGP daemon logic they need — cosmos only
+cares that they satisfy the gRPC contract.
 
 At startup the controller auto-bootstraps a `BGPProvider` resource for each
-daemon. These providers are the unit of targeting for all other resources.
+local agent endpoint. These providers are the unit of targeting for all other
+resources.
 
 Cosmos operates in a multi-cluster model:
 
@@ -31,7 +36,7 @@ Cosmos operates in a multi-cluster model:
 2. [Karmada][karmada] propagates `BGPSession` resources to **POP and infra
    clusters**.
 3. On each member cluster, the `SessionReconciler` generates `BGPPeer` resources
-   from the propagated sessions, and the `PeerReconciler` configures the daemons
+   from the propagated sessions, and the `PeerReconciler` configures the agents
    over [gRPC][grpc].
 
 The controller has no built-in knowledge of datacenter topology — all topology
@@ -41,12 +46,19 @@ is expressed through CRDs and Karmada propagation policies.
 
 ## Key features
 
-- **Dual-plane per node.** FRR underlay (IPv6 unicast) and GoBGP overlay (VPNv4/VPNv6) managed independently.
-- **Provider abstraction.** `BGPProvider` resources decouple topology from daemon type; FRR and GoBGP are both supported.
-- **Auto-bootstrapped providers.** No manual daemon registration; the controller creates `BGPProvider` resources at startup.
-- **Multi-cluster propagation.** Sessions are written once in the management cluster and distributed by Karmada.
+- **Provider abstraction.** `BGPProvider` resources decouple topology from agent
+  implementation. Cosmos drives any agent that implements the gRPC provider interface.
+- **Label-driven dispatch.** All resources select providers via `providerSelector`.
+  Topology is expressed through labels, not hardcoded names.
+- **Auto-bootstrapped providers.** No manual agent registration; the controller
+  creates `BGPProvider` resources at startup.
+- **Multi-cluster propagation.** Sessions are written once in the management
+  cluster and distributed by Karmada.
+- **Per-provider status.** Every BGP resource tracks reconciliation state
+  independently per provider.
 - **CNI-independent.** Works with any [CNI][cni] or none at all.
-- **VPC primitives.** `VPC` and `VPCAttachment` CRDs model virtual networks and their interface bindings.
+- **VPC primitives.** `VPC` and `VPCAttachment` CRDs model virtual networks and
+  their interface bindings.
 
 ---
 
@@ -57,8 +69,7 @@ is expressed through CRDs and Karmada propagation policies.
 - `kubectl` configured for your clusters
 - Container images accessible to your clusters:
   - `ghcr.io/milo-os/cosmos:latest` — controller
-  - An FRR image with northbound gRPC enabled
-  - A GoBGP daemon image
+  - One or more remote BGP agent images that implement the `BGPProviderService` proto
 
 ---
 
@@ -72,7 +83,7 @@ kubectl apply -k config/deploy
 ```
 
 After the DaemonSet pods become ready, verify that `BGPProvider` resources were
-auto-bootstrapped (one per daemon per node):
+auto-bootstrapped (one per agent per node):
 
 ```bash
 kubectl get bgpproviders
@@ -89,7 +100,7 @@ metadata:
 spec:
   providerSelector:
     matchLabels:
-      bgp.miloapis.com/daemon: frr
+      bgp.datum.net/plane: underlay
   asNumber: 65000
   addressFamilies:
     - afi: IPv6
@@ -108,7 +119,7 @@ spec:
   fromProviderSelector:
     matchLabels:
       bgp.miloapis.com/node: node-1
-      bgp.miloapis.com/daemon: frr
+      bgp.datum.net/plane: underlay
   fromInstanceRef: underlay
   toPeers:
     - address: "2001:db8:fabric::1"
@@ -146,7 +157,7 @@ For a complete walkthrough, see the [Getting Started guide](docs/getting-started
 
 | Resource      | Short name | Description                                                              |
 |---------------|------------|--------------------------------------------------------------------------|
-| `BGPProvider` | `bgpp`     | One BGP daemon instance (FRR or GoBGP). Auto-bootstrapped at startup.   |
+| `BGPProvider` | `bgpp`     | One remote BGP agent instance. Auto-bootstrapped at startup.             |
 
 ### VPC — `vpc.miloapis.com/v1alpha1`
 
@@ -203,8 +214,8 @@ docker build -f build/Dockerfile -t ghcr.io/milo-os/cosmos:dev .
 ### Examples
 
 - [BGPProvider (auto-bootstrapped)](docs/examples/pop-bgpprovider-auto.yaml)
-- [BGPInstance — underlay FRR](docs/examples/pop-bgpinstance-underlay.yaml)
-- [BGPInstance — overlay GoBGP](docs/examples/pop-bgpinstance-overlay.yaml)
+- [BGPInstance — underlay](docs/examples/pop-bgpinstance-underlay.yaml)
+- [BGPInstance — overlay](docs/examples/pop-bgpinstance-overlay.yaml)
 - [BGPInstance — infra route reflector](docs/examples/infra-bgpinstance-rr.yaml)
 - [BGPExternalPeer — ToR switch](docs/examples/mgmt-bgpexternalpeer-tor.yaml)
 - [BGPSession — underlay to ToR](docs/examples/mgmt-bgpsession-underlay-tor.yaml)
@@ -220,8 +231,6 @@ docker build -f build/Dockerfile -t ghcr.io/milo-os/cosmos:dev .
 
 <!-- References -->
 [bgp]: https://datatracker.ietf.org/doc/html/rfc4271
-[frr]: https://frrouting.org/
-[gobgp]: https://github.com/osrg/gobgp
 [grpc]: https://grpc.io/
 [karmada]: https://karmada.io/
 [netlink]: https://man7.org/linux/man-pages/man7/netlink.7.html

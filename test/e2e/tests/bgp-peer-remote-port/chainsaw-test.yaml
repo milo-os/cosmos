@@ -52,7 +52,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "${W2}"
                 asNumber: 65000
                 remotePort: 1790
@@ -68,7 +67,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "2001:db8::ffff"
                 asNumber: 65000
               EOF

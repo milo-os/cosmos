@@ -50,7 +50,7 @@ func newRootCommand() *cobra.Command {
 		Long: `Cosmos reconciles network CRDs against independently-running BGP daemons.
 It reconciles BGPProvider, BGPInstance, BGPPeer, BGPAdvertisement, BGPRoutePolicy,
 and BGPExternalPeer CRDs. BGPProvider resources specify the gRPC endpoint of a
-pre-existing daemon (FRR or GoBGP) that cosmos connects to.`,
+remote BGP agent that implements the BGPProviderService proto interface.`,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd.Context(), opts)

@@ -65,7 +65,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "${W2}"
                 asNumber: 65000
                 remotePort: 1790
@@ -87,7 +86,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "${W3}"
                 asNumber: 65000
                 remotePort: 1790
@@ -109,7 +107,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker2
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "${W1}"
                 asNumber: 65000
                 remotePort: 1790
@@ -131,7 +128,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker2
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "${W3}"
                 asNumber: 65000
                 remotePort: 1790
@@ -153,7 +149,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker3
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "${W1}"
                 asNumber: 65000
                 remotePort: 1790
@@ -175,7 +170,6 @@ spec:
                 providerSelector:
                   matchLabels:
                     bgp.miloapis.com/node: bgp-e2e-worker3
-                    bgp.miloapis.com/daemon: GoBGP
                 address: "${W2}"
                 asNumber: 65000
                 remotePort: 1790

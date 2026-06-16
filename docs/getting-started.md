@@ -1,13 +1,13 @@
 # Getting Started
 
 This guide walks through the minimal resources needed to bring up a POP node
-running both the FRR underlay and GoBGP overlay BGP planes with cosmos.
+with cosmos managing two BGP planes.
 
 By the end of this guide you will have:
 
 - cosmos running on a POP node with auto-bootstrapped BGPProvider resources
-- A BGPInstance for the FRR underlay (IPv6 unicast)
-- A BGPInstance for the GoBGP overlay (VPNv4/VPNv6)
+- A BGPInstance for the underlay plane (IPv6 unicast)
+- A BGPInstance for the overlay plane (VPNv4/VPNv6)
 - A BGPPeer peering the underlay to a top-of-rack switch
 - A BGPPeer peering the overlay to a regional route reflector
 
@@ -62,8 +62,7 @@ kubectl apply -k config/deploy
 ```
 
 This deploys the cosmos controller DaemonSet in the `bgp-system` namespace.
-Each pod manages both the FRR (underlay) and GoBGP (overlay) daemons on the
-node.
+Each pod connects to the remote BGP agents running on its node.
 
 Verify the DaemonSet is running:
 
@@ -76,7 +75,7 @@ kubectl -n bgp-system get pods -l app.kubernetes.io/name=cosmos
 
 ## Step 3: Verify BGPProvider auto-bootstrap
 
-cosmos bootstraps one BGPProvider per daemon at startup. You do not create
+Cosmos bootstraps one BGPProvider per agent at startup. You do not create
 these manually. After the DaemonSet pods become ready, verify that BGPProvider
 resources exist:
 
@@ -84,30 +83,29 @@ resources exist:
 kubectl get bgpproviders
 ```
 
-You should see one provider per daemon per node. The labels identify the plane
-and daemon type:
+You should see one provider per agent per node. The labels identify the plane:
 
 ```
-NAME            TYPE    READY
-node-1-frr      FRR     True
-node-1-gobgp    GoBGP   True
+NAME              TYPE      READY
+node-1-underlay   underlay  True
+node-1-overlay    overlay   True
 ```
 
 If a provider is not ready, check the conditions:
 
 ```bash
-kubectl describe bgpprovider node-1-frr
+kubectl describe bgpprovider node-1-underlay
 ```
 
-The `Ready` condition will indicate whether the daemon is reachable on its
-gRPC endpoint.
+The `Ready` condition will indicate whether the remote agent is reachable on
+its gRPC endpoint.
 
 ---
 
-## Step 4: Create the underlay BGPInstance (FRR)
+## Step 4: Create the underlay BGPInstance
 
-Create a BGPInstance to configure the FRR daemon as the underlay speaker.
-The `providerSelector` targets the auto-bootstrapped FRR provider:
+Create a BGPInstance to configure the underlay agent as the IPv6 unicast speaker.
+The `providerSelector` targets the auto-bootstrapped underlay provider:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
@@ -118,7 +116,6 @@ spec:
   providerSelector:
     matchLabels:
       bgp.datum.net/plane: underlay
-      bgp.miloapis.com/daemon: frr
   asNumber: 65000
   addressFamilies:
     - afi: IPv6
@@ -137,13 +134,13 @@ Verify the instance is reconciled:
 kubectl get bgpinstances underlay -o jsonpath='{.status.providers}'
 ```
 
-The per-provider status should show a `Ready: True` condition for `node-1-frr`.
+The per-provider status should show a `Ready: True` condition for `node-1-underlay`.
 
 ---
 
-## Step 5: Create the overlay BGPInstance (GoBGP)
+## Step 5: Create the overlay BGPInstance
 
-Create a BGPInstance to configure GoBGP as the overlay speaker:
+Create a BGPInstance to configure the overlay agent as the VPNv4/VPNv6 speaker:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
@@ -154,7 +151,6 @@ spec:
   providerSelector:
     matchLabels:
       bgp.datum.net/plane: overlay
-      bgp.miloapis.com/daemon: gobgp
   asNumber: 65000
   addressFamilies:
     - afi: IPv4
@@ -169,10 +165,9 @@ Apply:
 kubectl apply -f overlay-instance.yaml
 ```
 
-> **Note:** The CNI plugin manages VRF instances and path injection on this
-> GoBGP instance independently. Do not use BGPAdvertisement for overlay routes.
-> See the Operational Contract in `docs/api/bgp.md` for the API ownership
-> boundary between cosmos and the CNI plugin.
+> **Note:** The CNI plugin manages VRF instances and path injection on the
+> overlay provider independently of cosmos. Do not use BGPAdvertisement for
+> overlay routes. See the API ownership section in `docs/api/bgp.md`.
 
 ---
 
@@ -194,7 +189,7 @@ spec:
   providerSelector:
     matchLabels:
       bgp.miloapis.com/node: node-1
-      bgp.miloapis.com/daemon: frr
+      bgp.datum.net/plane: underlay
   address: "2001:db8:fabric::1"
   asNumber: 65000
   addressFamilies:
@@ -217,7 +212,6 @@ spec:
     matchLabels:
       bgp.datum.net/plane: overlay
       bgp.datum.net/pop: jp-east-1
-      bgp.miloapis.com/daemon: gobgp
   address: "2001:db8::rr-apac-1"
   asNumber: 65000
   addressFamilies:
@@ -238,7 +232,7 @@ kubectl --context management apply -f overlay-peer.yaml
 ```
 
 Karmada propagates the BGPPeer resources to the POP cluster and the
-PeerReconciler configures the daemons.
+PeerReconciler configures the remote agents.
 
 ---
 
@@ -261,7 +255,7 @@ The per-provider `SessionEstablished` condition shows whether the BGP FSM
 has reached Established state. If a session is not establishing:
 
 1. Verify network reachability between the node and the peer address
-2. Check that FRR/GoBGP is listening on the expected port
+2. Check that the remote agent is listening on the expected port
 3. Inspect the cosmos controller logs:
    ```bash
    kubectl -n bgp-system logs -l app.kubernetes.io/name=cosmos
@@ -302,7 +296,7 @@ kubectl get bgpadvertisement node-1-loopback -o jsonpath='{.status.providers}'
 ```
 
 The `Advertised: True` condition in the per-provider status confirms the prefix
-is in the FRR RIB.
+is in the remote agent's RIB.
 
 ---
 
@@ -313,13 +307,12 @@ is in the FRR RIB.
   CNI plugin.
 - Review the [example files](examples/) for complete annotated YAML:
   - [BGPProvider (auto-bootstrapped)](examples/pop-bgpprovider-auto.yaml)
-  - [BGPInstance — underlay FRR](examples/pop-bgpinstance-underlay.yaml)
-  - [BGPInstance — overlay GoBGP](examples/pop-bgpinstance-overlay.yaml)
+  - [BGPInstance — underlay](examples/pop-bgpinstance-underlay.yaml)
+  - [BGPInstance — overlay](examples/pop-bgpinstance-overlay.yaml)
   - [BGPInstance — infra route reflector](examples/infra-bgpinstance-rr.yaml)
   - [BGPExternalPeer — ToR switch](examples/mgmt-bgpexternalpeer-tor.yaml)
   - [Rejected configurations](examples/rejected-configurations.yaml)
 
 <!-- References -->
 [bgp]: https://datatracker.ietf.org/doc/html/rfc4271
-[gobgp]: https://github.com/osrg/gobgp
-[frr]: https://frrouting.org/
+[grpc]: https://grpc.io/

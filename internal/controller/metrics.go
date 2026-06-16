@@ -19,7 +19,7 @@ var (
 	routePoliciesAppliedGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "bgp_route_policies_applied",
-			Help: "1 if the BGPRoutePolicy is applied to GoBGP, 0 otherwise",
+			Help: "1 if the BGPRoutePolicy is applied to the provider, 0 otherwise",
 		},
 		[]string{"policy"},
 	)

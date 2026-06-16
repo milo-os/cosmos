@@ -4,7 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BGPVRFInstance configures an L2VPN EVPN VRF on GoBGP providers matched by
+// BGPVRFInstance configures an L2VPN EVPN VRF on providers matched by
 // spec.providerSelector. The referenced BGPInstance must have L2VPN/EVPN in
 // its addressFamilies.
 //
@@ -31,7 +31,7 @@ type BGPVRFInstanceSpec struct {
 	InstanceRef string `json:"instanceRef"`
 
 	// ProviderSelector selects the BGPProvider resources to configure this VRF on.
-	// Only GoBGP providers support VRF configuration.
+	// The matched providers must support the L2VPN/EVPN address family.
 	ProviderSelector metav1.LabelSelector `json:"providerSelector"`
 
 	// RouteDistinguisher uniquely identifies this VRF in the BGP control plane.

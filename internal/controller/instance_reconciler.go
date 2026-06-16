@@ -165,9 +165,9 @@ func (r *InstanceReconciler) reconcileForProvider(
 			"ConfigurationFailed", fmt.Sprintf("ConfigureSpeaker: %v", err))
 	}
 
-	// When the speaker was restarted (e.g. GoBGP StopBgp/StartBgp), all peer
-	// state is wiped. Bump an annotation on every BGPPeer that targets this
-	// provider so the PeerReconciler re-applies their configuration.
+	// When the remote agent was restarted, all peer state is wiped. Bump an
+	// annotation on every BGPPeer that targets this provider so the
+	// PeerReconciler re-applies their configuration.
 	if restarted {
 		r.invalidatePeersForProvider(ctx, bp.Name)
 	}

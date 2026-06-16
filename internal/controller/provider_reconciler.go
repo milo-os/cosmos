@@ -25,7 +25,9 @@ import (
 const (
 	// LabelManagedBy is the label key that records which controller manages a resource.
 	LabelManagedBy = "bgp.miloapis.com/managed-by"
-	// LabelDaemon records which BGP daemon type backs a provider.
+	// LabelDaemon is a conventional label key for tagging BGPProvider resources
+	// by agent type. Cosmos does not interpret its value; it is used by operators
+	// to drive providerSelector matching.
 	LabelDaemon = "bgp.miloapis.com/daemon"
 	// LabelNode records the Kubernetes node name a provider runs on.
 	LabelNode = "bgp.miloapis.com/node"

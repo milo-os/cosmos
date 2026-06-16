@@ -22,7 +22,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -84,7 +84,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "192.0.2.1:100"
                 importRouteTargets:
                   - value: "192.0.2.1:100"
@@ -108,7 +108,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "65000:200"
                 importRouteTargets:
                   - value: "65000:200"
@@ -142,7 +142,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "not-valid"
                 importRouteTargets:
                   - value: "65000:100"
@@ -174,7 +174,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "bad-rt"
@@ -206,7 +206,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "65000:100"
                 importRouteTargets: []
                 exportRouteTargets:
@@ -237,7 +237,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -267,7 +267,7 @@ spec:
               spec:
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -299,7 +299,7 @@ spec:
                 instanceRef: overlay
                 providerSelector:
                   matchLabels:
-                    daemon: GoBGP
+                    plane: overlay
                 importRouteTargets:
                   - value: "65000:100"
                 exportRouteTargets:
