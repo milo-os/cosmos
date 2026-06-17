@@ -206,31 +206,40 @@ func (r *InstanceReconciler) resolveRouterID(
 		return "", fmt.Errorf("get node %s: %w", nodeName, err)
 	}
 
-	// Collect all IPv6 InternalIP addresses.
-	var ipv6Addrs []string
+	// Collect InternalIP addresses, preferring IPv6 over IPv4.
+	var ipv6Addrs, ipv4Addrs []string
 	for _, addr := range node.Status.Addresses {
 		if addr.Type != corev1.NodeInternalIP {
 			continue
 		}
 		ip := net.ParseIP(addr.Address)
-		if ip == nil || ip.To4() != nil {
-			continue // skip IPv4
+		if ip == nil {
+			continue
 		}
-		ipv6Addrs = append(ipv6Addrs, addr.Address)
+		if ip.To4() != nil {
+			ipv4Addrs = append(ipv4Addrs, addr.Address)
+		} else {
+			ipv6Addrs = append(ipv6Addrs, addr.Address)
+		}
 	}
 
-	if len(ipv6Addrs) == 0 {
-		return "", fmt.Errorf("node %s has no IPv6 InternalIP addresses", nodeName)
+	if len(ipv6Addrs) > 0 {
+		// Prefer IPv6: derive router ID from the last 4 bytes.
+		sort.Strings(ipv6Addrs)
+		selectedIP := net.ParseIP(ipv6Addrs[0])
+		if selectedIP == nil {
+			return "", fmt.Errorf("parse selected IPv6 address %q", ipv6Addrs[0])
+		}
+		return ipv6ToRouterID(selectedIP), nil
 	}
 
-	// Lexicographically first IPv6 address.
-	sort.Strings(ipv6Addrs)
-	selectedIP := net.ParseIP(ipv6Addrs[0])
-	if selectedIP == nil {
-		return "", fmt.Errorf("parse selected IPv6 address %q", ipv6Addrs[0])
+	if len(ipv4Addrs) > 0 {
+		// Fall back to IPv4: the address is already a valid 32-bit router ID.
+		sort.Strings(ipv4Addrs)
+		return ipv4Addrs[0], nil
 	}
 
-	return ipv6ToRouterID(selectedIP), nil
+	return "", fmt.Errorf("node %s has no InternalIP addresses", nodeName)
 }
 
 // writeInstanceProviderStatus writes per-provider status for a BGPInstance using server-side apply.

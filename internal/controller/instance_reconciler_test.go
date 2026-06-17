@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -219,5 +220,98 @@ func TestSpeakerSpecPropagation(t *testing.T) {
 	}
 	if stub.lastSpec.RouterID != "192.0.2.1" {
 		t.Errorf("RouterID = %q, want %q", stub.lastSpec.RouterID, "192.0.2.1")
+	}
+}
+
+// TestResolveRouterIDAutoSource verifies that resolveRouterID prefers IPv6 when
+// available and falls back to IPv4 for IPv4-only nodes (e.g. Kind without dual-stack).
+func TestResolveRouterIDAutoSource(t *testing.T) {
+	tests := []struct {
+		name      string
+		addresses []corev1.NodeAddress
+		wantID    string
+		wantErr   bool
+	}{
+		{
+			name: "IPv6 only",
+			addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "fd00::1"},
+			},
+			wantID: "0.0.0.1",
+		},
+		{
+			name: "IPv4 only fallback",
+			addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "10.0.0.5"},
+			},
+			wantID: "10.0.0.5",
+		},
+		{
+			name: "dual-stack prefers IPv6",
+			addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "10.0.0.5"},
+				{Type: corev1.NodeInternalIP, Address: "fd00::1"},
+			},
+			wantID: "0.0.0.1",
+		},
+		{
+			name: "no InternalIP addresses",
+			addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeExternalIP, Address: "1.2.3.4"},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
+				Status:     corev1.NodeStatus{Addresses: tc.addresses},
+			}
+			bp := &providersv1alpha1.BGPProvider{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "test-provider",
+					Labels: map[string]string{LabelNode: "test-node"},
+				},
+				Spec: providersv1alpha1.BGPProviderSpec{Type: "test-agent"},
+			}
+			instance := &bgpv1alpha1.BGPInstance{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-instance"},
+				Spec: bgpv1alpha1.BGPInstanceSpec{
+					ASNumber:       64512,
+					RouterIDSource: "Auto",
+					ProviderSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{LabelNode: "test-node"},
+					},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(instance, bp, node).
+				WithStatusSubresource(instance).
+				Build()
+
+			r := &InstanceReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+				Pool:   provider.NewPool(),
+			}
+
+			gotID, err := r.resolveRouterID(context.Background(), instance, bp)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got routerID=%q", gotID)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveRouterID: %v", err)
+			}
+			if gotID != tc.wantID {
+				t.Errorf("routerID = %q, want %q", gotID, tc.wantID)
+			}
+		})
 	}
 }
