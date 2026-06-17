@@ -4,7 +4,7 @@ import (
 	providerv1alpha1 "go.miloapis.com/cosmos/api/proto/bgp/provider/v1alpha1"
 )
 
-func speakerSpecToProto(spec SpeakerSpec) *providerv1alpha1.ConfigureSpeakerRequest {
+func instanceSpecToProto(spec InstanceSpec) *providerv1alpha1.ConfigureSpeakerRequest {
 	families := make([]*providerv1alpha1.AddressFamily, 0, len(spec.Families))
 	for _, af := range spec.Families {
 		families = append(families, &providerv1alpha1.AddressFamily{Afi: af.AFI, Safi: af.SAFI})

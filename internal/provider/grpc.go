@@ -22,8 +22,8 @@ func NewGRPCProvider(conn grpc.ClientConnInterface) *GRPCProvider {
 	return &GRPCProvider{client: providerv1alpha1.NewBGPProviderServiceClient(conn)}
 }
 
-func (g *GRPCProvider) ConfigureSpeaker(ctx context.Context, spec SpeakerSpec) (bool, error) {
-	resp, err := g.client.ConfigureSpeaker(ctx, speakerSpecToProto(spec))
+func (g *GRPCProvider) ConfigureInstance(ctx context.Context, spec InstanceSpec) (bool, error) {
+	resp, err := g.client.ConfigureSpeaker(ctx, instanceSpecToProto(spec))
 	if err != nil {
 		return false, grpcErr(err)
 	}

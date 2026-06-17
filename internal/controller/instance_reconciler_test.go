@@ -13,12 +13,12 @@ import (
 	"go.miloapis.com/cosmos/internal/provider"
 )
 
-// stubProvider records the most recent ConfigureSpeaker call for inspection.
+// stubProvider records the most recent ConfigureInstance call for inspection.
 type stubProvider struct {
-	lastSpec provider.SpeakerSpec
+	lastSpec provider.InstanceSpec
 }
 
-func (s *stubProvider) ConfigureSpeaker(_ context.Context, spec provider.SpeakerSpec) (bool, error) {
+func (s *stubProvider) ConfigureInstance(_ context.Context, spec provider.InstanceSpec) (bool, error) {
 	s.lastSpec = spec
 	return false, nil
 }
@@ -36,7 +36,7 @@ func (s *stubProvider) Capabilities(_ context.Context) (provider.CapabilitySet, 
 }
 
 // TestListenPortPassthrough verifies that reconcileForProvider passes spec.listenPort
-// to ConfigureSpeaker unchanged, and falls back to 179 when the field is nil
+// to ConfigureInstance unchanged, and falls back to 179 when the field is nil
 // (objects created before the API default was introduced).
 func TestListenPortPassthrough(t *testing.T) {
 	p179 := int32(179)
@@ -173,9 +173,9 @@ func TestListenPortExplicitOverride(t *testing.T) {
 	}
 }
 
-// TestSpeakerSpecPropagation verifies that reconcileForProvider propagates AS
-// number and router ID from the BGPInstance spec to ConfigureSpeaker unchanged.
-func TestSpeakerSpecPropagation(t *testing.T) {
+// TestInstanceSpecPropagation verifies that reconcileForProvider propagates AS
+// number and router ID from the BGPInstance spec to ConfigureInstance unchanged.
+func TestInstanceSpecPropagation(t *testing.T) {
 	stub := &stubProvider{}
 	pool := provider.NewPool()
 	pool.SetForTest("test-provider", stub)

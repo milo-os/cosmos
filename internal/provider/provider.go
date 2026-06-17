@@ -24,10 +24,13 @@ import (
 // once. This contract enables the controller to safely re-apply configuration
 // after a daemon restart without first querying existing state.
 type Provider interface {
-	// ConfigureSpeaker applies BGPInstance-level configuration. Idempotent.
-	// Returns (true, nil) when the remote agent was restarted; peers must be
-	// re-applied by the caller because a restart wipes all session state.
-	ConfigureSpeaker(ctx context.Context, spec SpeakerSpec) (restarted bool, err error)
+	// ConfigureInstance applies BGPInstance-level configuration. Idempotent.
+	// On daemons that require a restart to change AS or router-ID (e.g. GoBGP
+	// StartBgp/StopBgp), the implementation is responsible for detecting the
+	// change and performing the restart transparently.
+	// Returns (true, nil) when the daemon was restarted; peers must be re-applied
+	// by the caller because a restart wipes all session state.
+	ConfigureInstance(ctx context.Context, spec InstanceSpec) (restarted bool, err error)
 
 	// AddOrUpdatePeer configures a BGP session. Idempotent.
 	AddOrUpdatePeer(ctx context.Context, peer PeerSpec) error
@@ -63,12 +66,15 @@ type AddressFamily struct {
 	SAFI string // "Unicast" or "VPNUnicast"
 }
 
-// SpeakerSpec is the provider-level representation of BGPInstance configuration.
+// InstanceSpec is the provider-level representation of BGPInstance configuration.
 // It is derived by the controller from a BGPInstance and its associated BGPProvider.
-type SpeakerSpec struct {
-	ASNumber       int64
-	RouterID       string
-	ListenPort     int32
+type InstanceSpec struct {
+	ASNumber int64
+	RouterID string
+	// ListenPort is 179 for FRR (standard BGP port). For GoBGP, it is 1790 on the
+	// route reflector and -1 (listener disabled) on worker nodes, which only connect
+	// outbound to the RR.
+	ListenPort int32
 	Families       []AddressFamily
 	Timers         TimerConfig
 	BestPath       BestPathConfig
