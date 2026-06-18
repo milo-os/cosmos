@@ -75,8 +75,7 @@ tasks:
       - task: deploy-cilium
       - task: deploy-crds
       - task: deploy-bgp-operator
-      - task: deploy-bgp-providers
-      - task: deploy-bgp-instance
+      - task: deploy-bgp-routers
 
   deploy-cilium:
     desc: Install Cilium as the base CNI for pod networking
@@ -103,12 +102,12 @@ tasks:
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.REPO_ROOT}}/config/crd
       - KUBECONFIG={{.KUBECONFIG}} kubectl wait
           --for=condition=Established
-          crd/bgpinstances.bgp.miloapis.com
+          crd/bgprouters.bgp.miloapis.com
           crd/bgpadvertisements.bgp.miloapis.com
           crd/bgproutepolicies.bgp.miloapis.com
           crd/bgpexternalpeers.bgp.miloapis.com
           crd/bgppeers.bgp.miloapis.com
-          crd/bgpproviders.providers.bgp.miloapis.com
+          crd/bgpvrfinstances.bgp.miloapis.com
           crd/vpcs.vpc.miloapis.com
           crd/vpcattachments.vpc.miloapis.com
           --timeout=60s
@@ -119,15 +118,10 @@ tasks:
       - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.TASKFILE_DIR}}/overlay
       - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system rollout status daemonset/cosmos --timeout=120s
 
-  deploy-bgp-providers:
-    desc: Apply BGPProvider manifests for each e2e worker node
+  deploy-bgp-routers:
+    desc: Apply BGPRouter manifests for each e2e worker node
     cmds:
-      - KUBECONFIG={{.KUBECONFIG}} kubectl apply -f {{.TASKFILE_DIR}}/fixtures/bgpproviders.yaml
-
-  deploy-bgp-instance:
-    desc: Apply the default BGPInstance
-    cmds:
-      - KUBECONFIG={{.KUBECONFIG}} kubectl apply -f {{.TASKFILE_DIR}}/fixtures/bgpinstance-default.yaml
+      - KUBECONFIG={{.KUBECONFIG}} kubectl apply -f {{.TASKFILE_DIR}}/fixtures/bgprouters.yaml
 
   test:
     desc: Run the Chainsaw E2E test suite

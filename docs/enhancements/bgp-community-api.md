@@ -7,16 +7,12 @@ stage: alpha
 
 > Last verified: 2026-04-23 against main
 
-> **Note (2026-06-13):** Several code path references in this document are stale.
-> The `communities: []string` field on `BGPAdvertisement` described as a
-> "placeholder" has been removed from the current API — `BGPAdvertisementSpec`
-> now only has `instanceRef`, `prefixes`, and `peerSelector`. The `BGPRoutePolicy`
-> examples in this document use an older `type: Export`/`type: Import` + `statements`
-> shape; the current API uses `importStatements`/`exportStatements` arrays with
-> named `PolicyStatement` objects. The `BGPPeeringPolicy` references below refer
-> to a resource that was never implemented. The proposal intent and RBAC model
-> remain valid; field-level details will need to be reconciled with the current
-> API before implementation.
+> **Note:** This is an unimplemented proposal. The `BGPCommunity`,
+> `BGPCommunityAttachment`, and all `communityRefs`/`communitySelector`/`communityMatch`/`setCommunities`
+> fields described below do not exist in the current API and are subject to change.
+> The existing resources (`BGPRoutePolicy`, `BGPAdvertisement`) are shown using
+> their current API shapes. `BGPPeeringPolicy` references below refer to a resource
+> that was never implemented and can be ignored.
 
 ## Table of Contents
 
@@ -304,17 +300,24 @@ kind: BGPRoutePolicy
 metadata:
   name: border-no-leak
 spec:
-  type: Export
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: border
   peerSelector:
     matchLabels:
       bgp.miloapis.com/role: border
-  statements:
-    - communityMatch:
-        matchType: Any                  # Any | All
-        communityRefs:
-          - name: do-not-leak
-      action: Reject
-    - action: Accept
+  exportStatements:
+    - name: reject-do-not-leak
+      conditions:
+        communityMatch:                 # proposed new field
+          matchType: Any                # Any | All
+          communityRefs:
+            - name: do-not-leak
+      actions:
+        routeDisposition: Reject
+    - name: accept-all
+      actions:
+        routeDisposition: Accept
 ```
 
 **Reject at border any route tagged `class=internal` (using the selector
@@ -326,18 +329,25 @@ kind: BGPRoutePolicy
 metadata:
   name: border-reject-internal
 spec:
-  type: Export
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: border
   peerSelector:
     matchLabels:
       bgp.miloapis.com/role: border
-  statements:
-    - communityMatch:
-        matchType: Any
-        communitySelector:
-          matchLabels:
-            bgp.miloapis.com/class: internal
-      action: Reject
-    - action: Accept
+  exportStatements:
+    - name: reject-internal
+      conditions:
+        communityMatch:                 # proposed new field
+          matchType: Any
+          communitySelector:
+            matchLabels:
+              bgp.miloapis.com/class: internal
+      actions:
+        routeDisposition: Reject
+    - name: accept-all
+      actions:
+        routeDisposition: Accept
 ```
 
 **Tag on ingress: everything learned from an upstream peer is marked
@@ -349,15 +359,19 @@ kind: BGPRoutePolicy
 metadata:
   name: ingress-tag-external
 spec:
-  type: Import
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/plane: underlay
   peerSelector:
     matchLabels:
       bgp.miloapis.com/role: upstream
-  statements:
-    - setCommunities:
-        add:
-          - name: external-route
-      action: Accept
+  importStatements:
+    - name: tag-external
+      actions:
+        routeDisposition: Accept
+        setCommunities:                 # proposed new field
+          add:
+            - name: external-route
 ```
 
 **Strip classification on egress so internal markers never leave the AS:**
@@ -368,16 +382,20 @@ kind: BGPRoutePolicy
 metadata:
   name: border-strip-markers
 spec:
-  type: Export
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: border
   peerSelector:
     matchLabels:
       bgp.miloapis.com/role: border
-  statements:
-    - setCommunities:
-        remove:
-          - name: internal-route
-          - name: do-not-leak
-      action: Accept
+  exportStatements:
+    - name: strip-internal-markers
+      actions:
+        routeDisposition: Accept
+        setCommunities:                 # proposed new field
+          remove:
+            - name: internal-route
+            - name: do-not-leak
 ```
 
 ### End-to-end example
@@ -436,18 +454,25 @@ kind: BGPRoutePolicy
 metadata:
   name: border-reject-internal
 spec:
-  type: Export
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: border
   peerSelector:
     matchLabels:
       bgp.miloapis.com/role: border
-  statements:
-    - communityMatch:
-        matchType: Any
-        communitySelector:
-          matchLabels:
-            bgp.miloapis.com/class: internal
-      action: Reject
-    - action: Accept
+  exportStatements:
+    - name: reject-internal
+      conditions:
+        communityMatch:               # proposed new field
+          matchType: Any
+          communitySelector:
+            matchLabels:
+              bgp.miloapis.com/class: internal
+      actions:
+        routeDisposition: Reject
+    - name: accept-all
+      actions:
+        routeDisposition: Accept
 ```
 
 No team touches another's resource. The tenant owns the advertisement, the
@@ -582,8 +607,7 @@ surface on every advertisement.
 selectors over `BGPCommunity` objects cover the same use case — group
 by `matchLabels: {class: internal}` anywhere communities are accepted —
 and do so using the idiom already present throughout this repo
-(`BGPAdvertisement.peerSelector`, `BGPRoutePolicy.peerSelector`,
-`BGPPeeringPolicy.selector`). A set resource would add a second grouping
+(`BGPAdvertisement.peerSelector`, `BGPRoutePolicy.peerSelector`). A set resource would add a second grouping
 mechanism, a second reconciler, a second RBAC kind, a second
 dangling-ref failure mode, and composition questions (can a set
 reference another set?) without enabling anything a selector cannot

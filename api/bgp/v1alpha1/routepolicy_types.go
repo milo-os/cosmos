@@ -4,14 +4,42 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BGPRoutePolicy applies import/export route policy to selected BGPPeer resources.
+// BGPPolicyDirection is the direction in which a BGPRoutePolicy is applied.
+//
+// +kubebuilder:validation:Enum=import;export
+type BGPPolicyDirection string
+
+const (
+	// BGPPolicyDirectionImport applies the policy to routes received from peers.
+	BGPPolicyDirectionImport BGPPolicyDirection = "import"
+
+	// BGPPolicyDirectionExport applies the policy to routes advertised to peers.
+	BGPPolicyDirectionExport BGPPolicyDirection = "export"
+)
+
+// BGPPolicyAction is the disposition applied when a policy term matches.
+//
+// +kubebuilder:validation:Enum=permit;deny
+type BGPPolicyAction string
+
+const (
+	// BGPPolicyActionPermit allows the route and optionally applies set actions.
+	BGPPolicyActionPermit BGPPolicyAction = "permit"
+
+	// BGPPolicyActionDeny drops the route. Set actions must not be specified.
+	BGPPolicyActionDeny BGPPolicyAction = "deny"
+)
+
+// BGPRoutePolicy defines composable, ordered routing policy statements applied to a
+// BGPRouter in a specific direction (import or export). It binds to one or more
+// BGPRouter instances via routerRef or routerSelector.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=bgprp
-// +kubebuilder:printcolumn:name="Instance",type="string",JSONPath=".spec.instanceRef"
-// +kubebuilder:printcolumn:name="Priority",type="integer",JSONPath=".spec.priority"
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:resource:scope=Namespaced,shortName=bgprp
+// +kubebuilder:printcolumn:name="DIRECTION",type="string",JSONPath=".spec.direction"
+// +kubebuilder:printcolumn:name="TERMS",type="integer",JSONPath=".spec.terms"
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 type BGPRoutePolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -21,111 +49,100 @@ type BGPRoutePolicy struct {
 }
 
 // BGPRoutePolicySpec defines the desired route policy state.
+//
+// +kubebuilder:validation:XValidation:rule="self.terms.all(t1, self.terms.filter(t2, t2.sequence == t1.sequence).size() == 1)",message="Term sequence numbers must be unique"
 type BGPRoutePolicySpec struct {
-	// InstanceRef is the name of the BGPInstance this policy applies to.
-	InstanceRef string `json:"instanceRef"`
+	RouterTarget `json:",inline"`
 
-	// PeerSelector selects BGPPeer resources this policy applies to.
-	//
+	// Direction is the policy direction: import or export.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=import;export
+	Direction BGPPolicyDirection `json:"direction"`
+
+	// Terms is the ordered list of policy statements.
+	// Evaluated from lowest to highest sequence number.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	Terms []BGPRoutePolicyTerm `json:"terms"`
+}
+
+// BGPRoutePolicyTerm is a single ordered policy statement with match conditions and an action.
+//
+// +kubebuilder:validation:XValidation:rule="self.action == 'deny' ? !has(self.set) : true",message="set actions are not permitted on deny terms"
+type BGPRoutePolicyTerm struct {
+	// Sequence is the evaluation order. Lower values are evaluated first.
+	// Must be unique within the policy.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Sequence int32 `json:"sequence"`
+
+	// Match defines the conditions under which this term fires.
+	Match BGPRoutePolicyMatch `json:"match"`
+
+	// Action is the disposition when this term matches.
+	// +kubebuilder:validation:Enum=permit;deny
+	Action BGPPolicyAction `json:"action"`
+
+	// Set defines mutations applied when action is "permit".
+	// Must not be set when action is "deny".
 	// +optional
-	PeerSelector *metav1.LabelSelector `json:"peerSelector,omitempty"`
+	Set *PolicySetActions `json:"set,omitempty"`
+}
 
-	// Priority determines policy ordering. Higher priority policies are applied first.
-	// Equal priority: sorted by metadata.name ascending.
-	//
-	// +kubebuilder:default=100
+// BGPRoutePolicyMatch defines the conditions under which a policy term fires.
+type BGPRoutePolicyMatch struct {
+	// Any matches all routes. When true, all other match fields are ignored.
+	// +optional
+	Any bool `json:"any,omitempty"`
+
+	// AddressFamilies constrains the match to specific AFI/SAFI combinations.
+	// If empty, all address families are matched.
+	// +optional
+	// +kubebuilder:validation:MaxItems=8
+	AddressFamilies []AddressFamily `json:"addressFamilies,omitempty"`
+}
+
+// PolicySetActions defines mutations applied when a term matches with action "permit".
+type PolicySetActions struct {
+	// Communities defines community add/remove operations.
+	// +optional
+	Communities *CommunitySet `json:"communities,omitempty"`
+
+	// LocalPreference sets the LOCAL_PREF attribute.
+	// Only meaningful on import (iBGP) or export to iBGP peers.
+	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=1000
-	// +optional
-	Priority int32 `json:"priority,omitempty"`
-
-	// ImportStatements are evaluated on routes received from peers.
-	//
-	// +optional
-	ImportStatements []PolicyStatement `json:"importStatements,omitempty"`
-
-	// ExportStatements are evaluated on routes sent to peers.
-	//
-	// +optional
-	ExportStatements []PolicyStatement `json:"exportStatements,omitempty"`
+	// +kubebuilder:validation:Maximum=4294967295
+	LocalPreference *uint32 `json:"localPreference,omitempty"`
 }
 
-// PolicyStatement is a single route policy statement with match conditions and actions.
-type PolicyStatement struct {
-	// Name is the statement identifier.
-	Name string `json:"name"`
-
-	// Conditions define what routes this statement matches.
-	//
+// CommunitySet defines community add and remove operations.
+type CommunitySet struct {
+	// Add is a list of communities to attach.
 	// +optional
-	Conditions *PolicyConditions `json:"conditions,omitempty"`
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=24
+	Add []string `json:"add,omitempty"`
 
-	// Actions define what to do with matched routes.
-	Actions PolicyActions `json:"actions"`
-}
-
-// PolicyConditions contains route match conditions.
-type PolicyConditions struct {
-	// PrefixSets is a list of prefix set names to match.
+	// Remove is a list of communities to strip.
 	// +optional
-	PrefixSets []string `json:"prefixSets,omitempty"`
-
-	// CommunitySet is a community set name to match.
-	// +optional
-	CommunitySet string `json:"communitySet,omitempty"`
-
-	// NextHopSet is a next-hop set name to match.
-	// +optional
-	NextHopSet string `json:"nextHopSet,omitempty"`
-}
-
-// PolicyActions defines what to do with a matched route.
-type PolicyActions struct {
-	// RouteDisposition is the action to take: accept or reject.
-	//
-	// +kubebuilder:validation:Enum=Accept;Reject
-	RouteDisposition string `json:"routeDisposition"`
-
-	// SetCommunity adds or replaces BGP communities.
-	//
-	// +optional
-	SetCommunity *SetCommunityAction `json:"setCommunity,omitempty"`
-
-	// SetLocalPreference sets the local preference attribute.
-	//
-	// +optional
-	SetLocalPreference *int32 `json:"setLocalPreference,omitempty"`
-
-	// SetMED sets the Multi-Exit Discriminator attribute.
-	//
-	// +optional
-	SetMED *int32 `json:"setMED,omitempty"`
-
-	// SetNextHop sets the next-hop address.
-	//
-	// +optional
-	SetNextHop string `json:"setNextHop,omitempty"`
-}
-
-// SetCommunityAction specifies how to modify BGP communities.
-type SetCommunityAction struct {
-	// Communities is the list of community values to set.
-	Communities []string `json:"communities"`
-
-	// Method controls whether communities are added to or replace existing ones.
-	//
-	// +kubebuilder:validation:Enum=Add;Replace;Remove
-	Method string `json:"method"`
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=24
+	Remove []string `json:"remove,omitempty"`
 }
 
 // BGPRoutePolicyStatus defines the observed state of BGPRoutePolicy.
 type BGPRoutePolicyStatus struct {
-	// Providers holds per-provider reconciliation status.
+	// ObservedGeneration is the .metadata.generation this status was computed from.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions contains the standard conditions for this resource.
 	//
 	// +listType=map
-	// +listMapKey=providerName
+	// +listMapKey=type
 	// +optional
-	Providers []ProviderStatus `json:"providers,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

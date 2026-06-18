@@ -1,18 +1,18 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: bgp-peer-remote-port
+  name: bgp-peer-timers
 spec:
   description: >
-    Verify that BGPPeer resources with explicit remotePort and without remotePort
-    are accepted by the API server and created correctly by the operator.
+    Verify that BGPPeer resources with explicit holdTime/keepaliveTime and without
+    are both accepted by the API server and created correctly.
   steps:
     - name: cleanup-stale
       try:
         - script:
             content: |
-              kubectl delete bgppeer e2e-rp-explicit e2e-rp-default 2>/dev/null || true
-              kubectl delete configmap bgp-e2e-rp-ips 2>/dev/null || true
+              kubectl delete bgppeer e2e-timers-explicit e2e-timers-default 2>/dev/null || true
+              kubectl delete configmap bgp-e2e-timer-ips 2>/dev/null || true
               echo "OK: stale resources cleaned up"
 
     - name: resolve-worker-ips
@@ -28,7 +28,7 @@ spec:
               W1=$(get_ipv6 bgp-e2e-worker)
               W2=$(get_ipv6 bgp-e2e-worker2)
               echo "worker1=${W1} worker2=${W2}"
-              kubectl create configmap bgp-e2e-rp-ips \
+              kubectl create configmap bgp-e2e-timer-ips \
                 --from-literal=worker1="${W1}" \
                 --from-literal=worker2="${W2}" \
                 --dry-run=client -o yaml | kubectl apply -f -
@@ -38,37 +38,40 @@ spec:
         - script:
             content: |
               set -e
-              W2=$(kubectl get configmap bgp-e2e-rp-ips -o jsonpath='{.data.worker2}')
+              W2=$(kubectl get configmap bgp-e2e-timer-ips -o jsonpath='{.data.worker2}')
 
-              kubectl apply -f - <<EOF
+              kubectl apply -n "$NAMESPACE" -f - <<EOF
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
               metadata:
-                name: e2e-rp-explicit
+                name: e2e-timers-explicit
                 labels:
-                  e2e-test: bgp-peer-remote-port
+                  e2e-test: bgp-peer-timers
               spec:
-                instanceRef: default
-                providerSelector:
-                  matchLabels:
-                    bgp.miloapis.com/node: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 address: "${W2}"
-                asNumber: 65000
-                remotePort: 1790
+                peerASN: 65000
+                addressFamilies:
+                  - afi: ipv6
+                    safi: unicast
+                holdTime: 30s
+                keepaliveTime: 10s
               ---
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
               metadata:
-                name: e2e-rp-default
+                name: e2e-timers-default
                 labels:
-                  e2e-test: bgp-peer-remote-port
+                  e2e-test: bgp-peer-timers
               spec:
-                instanceRef: default
-                providerSelector:
-                  matchLabels:
-                    bgp.miloapis.com/node: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 address: "2001:db8::ffff"
-                asNumber: 65000
+                peerASN: 65000
+                addressFamilies:
+                  - afi: ipv6
+                    safi: unicast
               EOF
 
     - name: assert-peers-created
@@ -78,30 +81,31 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
               metadata:
-                name: e2e-rp-explicit
+                name: e2e-timers-explicit
               spec:
-                remotePort: 1790
+                holdTime: 30s
+                keepaliveTime: 10s
         - assert:
             resource:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
               metadata:
-                name: e2e-rp-default
-              (spec.remotePort == `null` || spec.remotePort == `0`): true
+                name: e2e-timers-default
+              (spec.holdTime == null || spec.holdTime == ""): true
 
       finally:
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
-              name: e2e-rp-explicit
+              name: e2e-timers-explicit
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
-              name: e2e-rp-default
+              name: e2e-timers-default
         - delete:
             ref:
               apiVersion: v1
               kind: ConfigMap
-              name: bgp-e2e-rp-ips
+              name: bgp-e2e-timer-ips

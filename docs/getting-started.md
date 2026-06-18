@@ -5,9 +5,8 @@ with cosmos managing two BGP planes.
 
 By the end of this guide you will have:
 
-- cosmos running on a POP node with auto-bootstrapped BGPProvider resources
-- A BGPInstance for the underlay plane (IPv6 unicast)
-- A BGPInstance for the overlay plane (VPNv4/VPNv6)
+- A BGPRouter for the underlay plane (IPv6 unicast)
+- A BGPRouter for the overlay plane (L2VPN EVPN)
 - A BGPPeer peering the underlay to a top-of-rack switch
 - A BGPPeer peering the overlay to a regional route reflector
 
@@ -19,9 +18,8 @@ You need:
 
 - A Kubernetes cluster representing a POP node with IPv6 enabled
 - `kubectl` configured to reach the cluster
-- An infra cluster with a running route reflector (BGPInstance with
-  `spec.routeReflector` set)
-- A management cluster with Karmada running, from which BGPSession resources
+- An infra cluster with a running route reflector (BGPRouter configured as a route reflector)
+- A management cluster with Karmada running, from which BGPPeer resources
   are propagated
 
 ---
@@ -34,144 +32,100 @@ Apply the CRD manifests:
 kubectl apply -k config/crd
 ```
 
-Verify that both API groups are installed:
+Verify the API group is installed:
 
 ```bash
 kubectl get crds | grep miloapis.com
 ```
 
-You should see six CRDs:
+You should see:
 
 ```
 bgpadvertisements.bgp.miloapis.com
 bgpexternalpeers.bgp.miloapis.com
-bgpinstances.bgp.miloapis.com
 bgppeers.bgp.miloapis.com
 bgproutepolicies.bgp.miloapis.com
-bgpproviders.providers.bgp.miloapis.com
+bgprouters.bgp.miloapis.com
+bgpvrfinstances.bgp.miloapis.com
+vpcs.vpc.miloapis.com
+vpcattachments.vpc.miloapis.com
 ```
 
 ---
 
-## Step 2: Deploy the cosmos controller
+## Step 2: Create the underlay BGPRouter
 
-Apply the full deployment:
-
-```bash
-kubectl apply -k config/deploy
-```
-
-This deploys the cosmos controller DaemonSet in the `bgp-system` namespace.
-Each pod connects to the remote BGP agents running on its node.
-
-Verify the DaemonSet is running:
-
-```bash
-kubectl -n bgp-system get daemonset cosmos
-kubectl -n bgp-system get pods -l app.kubernetes.io/name=cosmos
-```
-
----
-
-## Step 3: Verify BGPProvider auto-bootstrap
-
-Cosmos bootstraps one BGPProvider per agent at startup. You do not create
-these manually. After the DaemonSet pods become ready, verify that BGPProvider
-resources exist:
-
-```bash
-kubectl get bgpproviders
-```
-
-You should see one provider per agent per node. The labels identify the plane:
-
-```
-NAME              TYPE      READY
-node-1-underlay   underlay  True
-node-1-overlay    overlay   True
-```
-
-If a provider is not ready, check the conditions:
-
-```bash
-kubectl describe bgpprovider node-1-underlay
-```
-
-The `Ready` condition will indicate whether the remote agent is reachable on
-its gRPC endpoint.
-
----
-
-## Step 4: Create the underlay BGPInstance
-
-Create a BGPInstance to configure the underlay agent as the IPv6 unicast speaker.
-The `providerSelector` targets the auto-bootstrapped underlay provider:
+Create a BGPRouter to represent the underlay routing context for IPv6 unicast:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPInstance
+kind: BGPRouter
 metadata:
-  name: underlay
+  name: node-1-underlay
+  namespace: default
+  labels:
+    bgp.miloapis.com/role: fabric
 spec:
-  providerSelector:
-    matchLabels:
-      bgp.datum.net/plane: underlay
-  asNumber: 65000
+  targetRef:
+    kind: Node
+    name: node-1
+  roles:
+    - fabric
+  localASN: 65000
+  routerID: "10.0.0.1"
   addressFamilies:
-    - afi: IPv6
-      safi: Unicast
+    - afi: ipv6
+      safi: unicast
 ```
 
 Apply:
 
 ```bash
-kubectl apply -f underlay-instance.yaml
+kubectl apply -f underlay-router.yaml
 ```
 
-Verify the instance is reconciled:
+Verify the router is accepted:
 
 ```bash
-kubectl get bgpinstances underlay -o jsonpath='{.status.providers}'
+kubectl get bgprouter node-1-underlay
 ```
-
-The per-provider status should show a `Ready: True` condition for `node-1-underlay`.
 
 ---
 
-## Step 5: Create the overlay BGPInstance
+## Step 3: Create the overlay BGPRouter
 
-Create a BGPInstance to configure the overlay agent as the VPNv4/VPNv6 speaker:
+Create a BGPRouter to represent the overlay routing context for L2VPN EVPN:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPInstance
+kind: BGPRouter
 metadata:
-  name: overlay
+  name: node-1-overlay
+  namespace: default
+  labels:
+    bgp.miloapis.com/role: fabric
 spec:
-  providerSelector:
-    matchLabels:
-      bgp.datum.net/plane: overlay
-  asNumber: 65000
+  targetRef:
+    kind: Node
+    name: node-1
+  roles:
+    - fabric
+  localASN: 65000
+  routerID: "10.0.0.1"
   addressFamilies:
-    - afi: IPv4
-      safi: VPNUnicast
-    - afi: IPv6
-      safi: VPNUnicast
+    - afi: l2vpn
+      safi: evpn
 ```
 
 Apply:
 
 ```bash
-kubectl apply -f overlay-instance.yaml
+kubectl apply -f overlay-router.yaml
 ```
-
-> **Note:** The CNI plugin manages VRF instances and path injection on the
-> overlay provider independently of cosmos. Do not use BGPAdvertisement for
-> overlay routes. See the API ownership section in `docs/api/bgp.md`.
 
 ---
 
-## Step 6: Create BGPPeer resources in the management cluster
+## Step 4: Create BGPPeer resources in the management cluster
 
 BGPPeer resources are written in the management cluster and propagated to
 POP/infra clusters via Karmada.
@@ -179,23 +133,20 @@ POP/infra clusters via Karmada.
 ### Underlay peer (node to ToR)
 
 ```yaml
-# Propagated by Karmada to the POP cluster based on providerSelector labels.
+# Propagated by Karmada to the POP cluster.
 apiVersion: bgp.miloapis.com/v1alpha1
 kind: BGPPeer
 metadata:
   name: node-1-to-tor-1
+  namespace: default
 spec:
-  instanceRef: underlay
-  providerSelector:
-    matchLabels:
-      bgp.miloapis.com/node: node-1
-      bgp.datum.net/plane: underlay
+  routerRef:
+    name: node-1-underlay
   address: "2001:db8:fabric::1"
-  asNumber: 65000
+  peerASN: 65000
   addressFamilies:
-    - afi: IPv6
-      safi: Unicast
-  allowAsIn: 1
+    - afi: ipv6
+      safi: unicast
 ```
 
 ### Overlay peer (node to route reflector)
@@ -205,23 +156,19 @@ spec:
 apiVersion: bgp.miloapis.com/v1alpha1
 kind: BGPPeer
 metadata:
-  name: tokyo-overlay-to-rr-apac-1
+  name: node-1-overlay-to-rr-apac-1
+  namespace: default
 spec:
-  instanceRef: overlay
-  providerSelector:
-    matchLabels:
-      bgp.datum.net/plane: overlay
-      bgp.datum.net/pop: jp-east-1
-  address: "2001:db8::rr-apac-1"
-  asNumber: 65000
+  routerRef:
+    name: node-1-overlay
+  address: "2001:db8:0:rr-apac-1::1"
+  peerASN: 65000
+  description: "rr-apac-1"
   addressFamilies:
-    - afi: IPv4
-      safi: VPNUnicast
-    - afi: IPv6
-      safi: VPNUnicast
-  timers:
-    holdTime: 90
-    keepalive: 30
+    - afi: l2vpn
+      safi: evpn
+  holdTime: 90s
+  keepaliveTime: 30s
 ```
 
 Apply to the management cluster:
@@ -231,43 +178,38 @@ kubectl --context management apply -f underlay-peer.yaml
 kubectl --context management apply -f overlay-peer.yaml
 ```
 
-Karmada propagates the BGPPeer resources to the POP cluster and the
-PeerReconciler configures the remote agents.
+Karmada propagates the BGPPeer resources to the POP cluster.
 
 ---
 
-## Step 7: Verify BGPPeer resources and session state
+## Step 5: Verify BGPPeer resources
 
-After Karmada propagation and reconciliation, verify that BGPPeer resources
-exist on the POP cluster:
+After Karmada propagation, verify that BGPPeer resources exist on the POP cluster:
 
 ```bash
 kubectl get bgppeers
 ```
 
-Check whether sessions have established:
+Check session state:
 
 ```bash
 kubectl get bgppeers -o wide
 ```
 
-The per-provider `SessionEstablished` condition shows whether the BGP FSM
-has reached Established state. If a session is not establishing:
+The `STATE` printer column reflects the BGP FSM state (`Idle`, `Active`,
+`Established`, etc.) as reported by the implementation. If a session is not
+establishing:
 
 1. Verify network reachability between the node and the peer address
-2. Check that the remote agent is listening on the expected port
-3. Inspect the cosmos controller logs:
-   ```bash
-   kubectl -n bgp-system logs -l app.kubernetes.io/name=cosmos
-   ```
-4. Check the per-provider conditions on the BGPPeer:
+2. Check that the remote BGP agent is listening on the expected port
+3. Check the conditions on the BGPPeer:
    ```bash
    kubectl describe bgppeer <peer-name>
    ```
 
 ---
 
-## Step 8: Advertise infrastructure prefixes (underlay only)
+## Step 6: Advertise infrastructure prefixes (underlay only)
 
 For loopback addresses and SRv6 locator blocks, create a BGPAdvertisement
 on the POP cluster:
@@ -277,8 +219,13 @@ apiVersion: bgp.miloapis.com/v1alpha1
 kind: BGPAdvertisement
 metadata:
   name: node-1-loopback
+  namespace: default
 spec:
-  instanceRef: underlay
+  routerRef:
+    name: node-1-underlay
+  addressFamily:
+    afi: ipv6
+    safi: unicast
   prefixes:
     - "2001:db8:loopback::1/128"
 ```
@@ -292,27 +239,53 @@ kubectl apply -f advertisement.yaml
 Verify the advertisement:
 
 ```bash
-kubectl get bgpadvertisement node-1-loopback -o jsonpath='{.status.providers}'
+kubectl get bgpadvertisement node-1-loopback
 ```
 
-The `Advertised: True` condition in the per-provider status confirms the prefix
-is in the remote agent's RIB.
+---
+
+## Step 7: Apply route policy (optional)
+
+To control which routes are advertised to peers, create a BGPRoutePolicy:
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRoutePolicy
+metadata:
+  name: node-1-underlay-export
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  direction: export
+  terms:
+    - sequence: 10
+      match:
+        addressFamilies:
+          - afi: ipv6
+            safi: unicast
+      action: permit
+    - sequence: 20
+      match:
+        any: true
+      action: deny
+```
+
+Apply:
+
+```bash
+kubectl apply -f route-policy.yaml
+```
 
 ---
 
 ## Next steps
 
-- Read the full [API reference](api/) for all 6 CRDs, including field
-  definitions, conditions, and the operational contract between cosmos and the
-  CNI plugin.
+- Read the full [API reference](api/) for all CRDs, including field
+  definitions and conditions.
 - Review the [example files](examples/) for complete annotated YAML:
-  - [BGPProvider (auto-bootstrapped)](examples/pop-bgpprovider-auto.yaml)
-  - [BGPInstance — underlay](examples/pop-bgpinstance-underlay.yaml)
-  - [BGPInstance — overlay](examples/pop-bgpinstance-overlay.yaml)
-  - [BGPInstance — infra route reflector](examples/infra-bgpinstance-rr.yaml)
   - [BGPExternalPeer — ToR switch](examples/mgmt-bgpexternalpeer-tor.yaml)
   - [Rejected configurations](examples/rejected-configurations.yaml)
 
 <!-- References -->
 [bgp]: https://datatracker.ietf.org/doc/html/rfc4271
-[grpc]: https://grpc.io/

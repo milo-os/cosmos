@@ -3,13 +3,10 @@
 # BGPExternalPeer resources live exclusively in the management cluster.
 # They are never propagated to POP or infra clusters.
 #
-# When the management cluster cosmos writes a BGPSession targeting this ToR,
-# it resolves the address and asNumber from this resource into the session's
-# toPeers list at write time.
-#
-# Labels on this resource allow the management cluster to select the right
-# external peers when constructing BGPSession resources (e.g., all ToR peers
-# in jp-east-1, rack A).
+# This resource is a named registry of external BGP neighbors (ToR switches,
+# upstream transit routers, etc.). Labels allow selectors to reference groups
+# of external peers (e.g., all ToR peers in jp-east-1, rack A) when
+# constructing BGPPeer resources for propagation to POP clusters.
 apiVersion: bgp.miloapis.com/v1alpha1
 kind: BGPExternalPeer
 metadata:

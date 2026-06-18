@@ -4,9 +4,8 @@ metadata:
   name: bgp-advertisement
 spec:
   description: >
-    Verify that BGPAdvertisement resources are accepted by the API server and
-    that the operator reconciles them, reporting provider status. Also verifies
-    that deleting the advertisement removes it cleanly.
+    Verify that BGPAdvertisement resources are accepted by the API server.
+    Also verifies that deleting the advertisement removes it cleanly.
   steps:
     - name: cleanup-stale
       try:
@@ -37,19 +36,15 @@ spec:
                 labels:
                   e2e-test: bgp-advertisement
               spec:
-                instanceRef: default
-                providerSelector:
-                  matchLabels:
-                    bgp.miloapis.com/node: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 address: "${W2}"
-                asNumber: 65000
-                remotePort: 1790
+                peerASN: 65000
                 addressFamilies:
-                  - afi: IPv6
-                    safi: Unicast
-                timers:
-                  holdTime: 30
-                  keepalive: 10
+                  - afi: ipv6
+                    safi: unicast
+                holdTime: 30s
+                keepaliveTime: 10s
               ---
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
@@ -58,19 +53,15 @@ spec:
                 labels:
                   e2e-test: bgp-advertisement
               spec:
-                instanceRef: default
-                providerSelector:
-                  matchLabels:
-                    bgp.miloapis.com/node: bgp-e2e-worker2
+                routerRef:
+                  name: bgp-e2e-worker2
                 address: "${W1}"
-                asNumber: 65000
-                remotePort: 1790
+                peerASN: 65000
                 addressFamilies:
-                  - afi: IPv6
-                    safi: Unicast
-                timers:
-                  holdTime: 30
-                  keepalive: 10
+                  - afi: ipv6
+                    safi: unicast
+                holdTime: 30s
+                keepaliveTime: 10s
               EOF
 
     - name: create-bgp-advertisement
@@ -82,7 +73,11 @@ spec:
               metadata:
                 name: e2e-test-prefix
               spec:
-                instanceRef: default
+                routerRef:
+                  name: bgp-e2e-worker
+                addressFamily:
+                  afi: ipv6
+                  safi: unicast
                 prefixes:
                   - "2001:db8:e2e::/48"
 

@@ -14,23 +14,25 @@ spec:
     shortNames:
     - bgprp
     singular: bgproutepolicy
-  scope: Cluster
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.instanceRef
-      name: Instance
+    - jsonPath: .spec.direction
+      name: DIRECTION
       type: string
-    - jsonPath: .spec.priority
-      name: Priority
+    - jsonPath: .spec.terms
+      name: TERMS
       type: integer
     - jsonPath: .metadata.creationTimestamp
-      name: Age
+      name: AGE
       type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: BGPRoutePolicy applies import/export route policy to selected
-          BGPPeer resources.
+        description: |-
+          BGPRoutePolicy defines composable, ordered routing policy statements applied to a
+          BGPRouter in a specific direction (import or export). It binds to one or more
+          BGPRouter instances via routerRef or routerSelector.
         properties:
           apiVersion:
             description: |-
@@ -52,170 +54,35 @@ spec:
           spec:
             description: BGPRoutePolicySpec defines the desired route policy state.
             properties:
-              exportStatements:
-                description: ExportStatements are evaluated on routes sent to peers.
-                items:
-                  description: PolicyStatement is a single route policy statement
-                    with match conditions and actions.
-                  properties:
-                    actions:
-                      description: Actions define what to do with matched routes.
-                      properties:
-                        routeDisposition:
-                          description: 'RouteDisposition is the action to take: accept
-                            or reject.'
-                          enum:
-                          - Accept
-                          - Reject
-                          type: string
-                        setCommunity:
-                          description: SetCommunity adds or replaces BGP communities.
-                          properties:
-                            communities:
-                              description: Communities is the list of community values
-                                to set.
-                              items:
-                                type: string
-                              type: array
-                            method:
-                              description: Method controls whether communities are
-                                added to or replace existing ones.
-                              enum:
-                              - Add
-                              - Replace
-                              - Remove
-                              type: string
-                          required:
-                          - communities
-                          - method
-                          type: object
-                        setLocalPreference:
-                          description: SetLocalPreference sets the local preference
-                            attribute.
-                          format: int32
-                          type: integer
-                        setMED:
-                          description: SetMED sets the Multi-Exit Discriminator attribute.
-                          format: int32
-                          type: integer
-                        setNextHop:
-                          description: SetNextHop sets the next-hop address.
-                          type: string
-                      required:
-                      - routeDisposition
-                      type: object
-                    conditions:
-                      description: Conditions define what routes this statement matches.
-                      properties:
-                        communitySet:
-                          description: CommunitySet is a community set name to match.
-                          type: string
-                        nextHopSet:
-                          description: NextHopSet is a next-hop set name to match.
-                          type: string
-                        prefixSets:
-                          description: PrefixSets is a list of prefix set names to
-                            match.
-                          items:
-                            type: string
-                          type: array
-                      type: object
-                    name:
-                      description: Name is the statement identifier.
-                      type: string
-                  required:
-                  - actions
-                  - name
-                  type: object
-                type: array
-              importStatements:
-                description: ImportStatements are evaluated on routes received from
-                  peers.
-                items:
-                  description: PolicyStatement is a single route policy statement
-                    with match conditions and actions.
-                  properties:
-                    actions:
-                      description: Actions define what to do with matched routes.
-                      properties:
-                        routeDisposition:
-                          description: 'RouteDisposition is the action to take: accept
-                            or reject.'
-                          enum:
-                          - Accept
-                          - Reject
-                          type: string
-                        setCommunity:
-                          description: SetCommunity adds or replaces BGP communities.
-                          properties:
-                            communities:
-                              description: Communities is the list of community values
-                                to set.
-                              items:
-                                type: string
-                              type: array
-                            method:
-                              description: Method controls whether communities are
-                                added to or replace existing ones.
-                              enum:
-                              - Add
-                              - Replace
-                              - Remove
-                              type: string
-                          required:
-                          - communities
-                          - method
-                          type: object
-                        setLocalPreference:
-                          description: SetLocalPreference sets the local preference
-                            attribute.
-                          format: int32
-                          type: integer
-                        setMED:
-                          description: SetMED sets the Multi-Exit Discriminator attribute.
-                          format: int32
-                          type: integer
-                        setNextHop:
-                          description: SetNextHop sets the next-hop address.
-                          type: string
-                      required:
-                      - routeDisposition
-                      type: object
-                    conditions:
-                      description: Conditions define what routes this statement matches.
-                      properties:
-                        communitySet:
-                          description: CommunitySet is a community set name to match.
-                          type: string
-                        nextHopSet:
-                          description: NextHopSet is a next-hop set name to match.
-                          type: string
-                        prefixSets:
-                          description: PrefixSets is a list of prefix set names to
-                            match.
-                          items:
-                            type: string
-                          type: array
-                      type: object
-                    name:
-                      description: Name is the statement identifier.
-                      type: string
-                  required:
-                  - actions
-                  - name
-                  type: object
-                type: array
-              instanceRef:
-                description: InstanceRef is the name of the BGPInstance this policy
-                  applies to.
+              direction:
+                allOf:
+                - enum:
+                  - import
+                  - export
+                - enum:
+                  - import
+                  - export
+                description: 'Direction is the policy direction: import or export.'
                 type: string
-              peerSelector:
-                description: PeerSelector selects BGPPeer resources this policy applies
-                  to.
+              routerRef:
+                description: |-
+                  RouterRef targets a single BGPRouter by name.
+                  Mutually exclusive with routerSelector.
+                properties:
+                  name:
+                    description: Name is the name of the BGPRouter.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              routerSelector:
+                description: |-
+                  RouterSelector targets one or more BGPRouters by label.
+                  Mutually exclusive with routerRef.
                 properties:
                   matchExpressions:
-                    description: matchExpressions is a list of label selector requirements.
-                      The requirements are ANDed.
+                    description: MatchExpressions is a list of label selector requirements.
                     items:
                       description: |-
                         A label selector requirement is a selector that contains values, a key, and an operator that
@@ -245,197 +112,209 @@ spec:
                       - operator
                       type: object
                     type: array
-                    x-kubernetes-list-type: atomic
                   matchLabels:
                     additionalProperties:
                       type: string
-                    description: |-
-                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                      map is equivalent to an element of matchExpressions, whose key field is "key", the
-                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    description: MatchLabels is a map of key/value label pairs to
+                      match.
                     type: object
                 type: object
-                x-kubernetes-map-type: atomic
-              priority:
-                default: 100
+              terms:
                 description: |-
-                  Priority determines policy ordering. Higher priority policies are applied first.
-                  Equal priority: sorted by metadata.name ascending.
-                format: int32
-                maximum: 1000
-                minimum: 0
-                type: integer
-            required:
-            - instanceRef
-            type: object
-          status:
-            description: BGPRoutePolicyStatus defines the observed state of BGPRoutePolicy.
-            properties:
-              providers:
-                description: Providers holds per-provider reconciliation status.
+                  Terms is the ordered list of policy statements.
+                  Evaluated from lowest to highest sequence number.
                 items:
-                  description: |-
-                    ProviderStatus holds per-provider reconciliation status.
-                    Used in status.providers arrays across BGPInstance, BGPPeer, BGPAdvertisement, BGPRoutePolicy.
+                  description: BGPRoutePolicyTerm is a single ordered policy statement
+                    with match conditions and an action.
                   properties:
-                    conditions:
-                      description: Conditions are the per-provider conditions.
-                      items:
-                        description: Condition contains details for one aspect of
-                          the current state of this API Resource.
-                        properties:
-                          lastTransitionTime:
-                            description: |-
-                              lastTransitionTime is the last time the condition transitioned from one status to another.
-                              This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
-                            format: date-time
-                            type: string
-                          message:
-                            description: |-
-                              message is a human readable message indicating details about the transition.
-                              This may be an empty string.
-                            maxLength: 32768
-                            type: string
-                          observedGeneration:
-                            description: |-
-                              observedGeneration represents the .metadata.generation that the condition was set based upon.
-                              For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
-                              with respect to the current state of the instance.
-                            format: int64
-                            minimum: 0
-                            type: integer
-                          reason:
-                            description: |-
-                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
-                              Producers of specific condition types may define expected values and meanings for this field,
-                              and whether the values are considered a guaranteed API.
-                              The value should be a CamelCase string.
-                              This field may not be empty.
-                            maxLength: 1024
-                            minLength: 1
-                            pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
-                            type: string
-                          status:
-                            description: status of the condition, one of True, False,
-                              Unknown.
-                            enum:
-                            - "True"
-                            - "False"
-                            - Unknown
-                            type: string
-                          type:
-                            description: type of condition in CamelCase or in foo.example.com/CamelCase.
-                            maxLength: 316
-                            pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
-                            type: string
-                        required:
-                        - lastTransitionTime
-                        - message
-                        - reason
-                        - status
-                        - type
-                        type: object
-                      type: array
-                      x-kubernetes-list-map-keys:
-                      - type
-                      x-kubernetes-list-type: map
-                    daemon:
-                      description: Daemon is the agent type reported by the BGPProvider.
+                    action:
+                      allOf:
+                      - enum:
+                        - permit
+                        - deny
+                      - enum:
+                        - permit
+                        - deny
+                      description: Action is the disposition when this term matches.
                       type: string
-                    providerName:
-                      description: ProviderName is the name of the BGPProvider this
-                        entry describes.
-                      type: string
-                    resolvedConfig:
-                      description: ResolvedConfig holds the configuration that was
-                        actually applied.
+                    match:
+                      description: Match defines the conditions under which this term
+                        fires.
                       properties:
-                        address:
-                          description: Address is the peer address (BGPPeer only).
-                          type: string
                         addressFamilies:
-                          description: AddressFamilies configured.
+                          description: |-
+                            AddressFamilies constrains the match to specific AFI/SAFI combinations.
+                            If empty, all address families are matched.
                           items:
-                            description: AddressFamily represents a BGP address family
-                              (AFI/SAFI pair).
+                            description: |-
+                              AddressFamily is a BGP address family expressed as an AFI/SAFI pair.
+                              Valid combinations: ipv4/unicast, ipv6/unicast, l2vpn/evpn.
                             properties:
                               afi:
-                                description: AFI is the Address Family Identifier.
+                                description: AFI is the address family indicator.
                                 enum:
-                                - IPv4
-                                - IPv6
-                                - L2VPN
+                                - ipv4
+                                - ipv6
+                                - l2vpn
                                 type: string
                               safi:
-                                description: SAFI is the Subsequent Address Family
-                                  Identifier.
+                                description: SAFI is the subsequent address family
+                                  indicator.
                                 enum:
-                                - Unicast
-                                - VPNUnicast
-                                - EVPN
+                                - unicast
+                                - evpn
                                 type: string
                             required:
                             - afi
                             - safi
                             type: object
+                            x-kubernetes-validations:
+                            - message: IPv4 only supports unicast SAFI
+                              rule: 'self.afi == ''ipv4'' ? self.safi == ''unicast''
+                                : true'
+                            - message: IPv6 only supports unicast SAFI
+                              rule: 'self.afi == ''ipv6'' ? self.safi == ''unicast''
+                                : true'
+                            - message: L2VPN only supports evpn SAFI
+                              rule: 'self.afi == ''l2vpn'' ? self.safi == ''evpn''
+                                : true'
+                          maxItems: 8
                           type: array
-                        allowAsIn:
-                          description: AllowAsIn is the allowas-in count (BGPPeer
-                            only).
-                          format: int32
-                          type: integer
-                        asNumber:
-                          description: ASNumber is the AS number configured.
-                          format: int64
-                          type: integer
-                        listenPort:
-                          description: ListenPort is the port the BGP speaker was
-                            configured to listen on.
-                          format: int32
-                          type: integer
-                        passive:
-                          description: Passive indicates passive mode (BGPPeer only).
+                        any:
+                          description: Any matches all routes. When true, all other
+                            match fields are ignored.
                           type: boolean
-                        passwordConfigured:
-                          description: PasswordConfigured indicates whether a BGP
-                            session password was applied.
-                          type: boolean
-                        resolvedPrefixes:
-                          description: ResolvedPrefixes is the list of prefixes injected
-                            (BGPAdvertisement only).
-                          items:
-                            type: string
-                          type: array
-                        routerID:
-                          description: RouterID resolved for this provider (BGPInstance
-                            only).
-                          type: string
-                        sessionType:
-                          description: SessionType is iBGP or eBGP (BGPPeer only).
-                          type: string
-                        timers:
-                          description: Timers resolved (merged from instance defaults
-                            and peer overrides).
+                      type: object
+                    sequence:
+                      description: |-
+                        Sequence is the evaluation order. Lower values are evaluated first.
+                        Must be unique within the policy.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                    set:
+                      description: |-
+                        Set defines mutations applied when action is "permit".
+                        Must not be set when action is "deny".
+                      properties:
+                        communities:
+                          description: Communities defines community add/remove operations.
                           properties:
-                            holdTime:
-                              format: int32
-                              type: integer
-                            keepalive:
-                              format: int32
-                              type: integer
-                          required:
-                          - holdTime
-                          - keepalive
+                            add:
+                              description: Add is a list of communities to attach.
+                              items:
+                                maxLength: 24
+                                type: string
+                              maxItems: 32
+                              type: array
+                            remove:
+                              description: Remove is a list of communities to strip.
+                              items:
+                                maxLength: 24
+                                type: string
+                              maxItems: 32
+                              type: array
                           type: object
+                        localPreference:
+                          description: |-
+                            LocalPreference sets the LOCAL_PREF attribute.
+                            Only meaningful on import (iBGP) or export to iBGP peers.
+                          format: int32
+                          maximum: 4294967295
+                          minimum: 0
+                          type: integer
                       type: object
                   required:
-                  - daemon
-                  - providerName
+                  - action
+                  - match
+                  - sequence
+                  type: object
+                  x-kubernetes-validations:
+                  - message: set actions are not permitted on deny terms
+                    rule: 'self.action == ''deny'' ? !has(self.set) : true'
+                maxItems: 32
+                minItems: 1
+                type: array
+            required:
+            - direction
+            - terms
+            type: object
+            x-kubernetes-validations:
+            - message: Term sequence numbers must be unique
+              rule: self.terms.all(t1, self.terms.filter(t2, t2.sequence == t1.sequence).size()
+                == 1)
+            - message: Exactly one of routerRef or routerSelector must be set
+              rule: has(self.routerRef) != has(self.routerSelector)
+          status:
+            description: BGPRoutePolicyStatus defines the observed state of BGPRoutePolicy.
+            properties:
+              conditions:
+                description: Conditions contains the standard conditions for this
+                  resource.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:
-                - providerName
+                - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: ObservedGeneration is the .metadata.generation this status
+                  was computed from.
+                format: int64
+                type: integer
             type: object
         type: object
     served: true

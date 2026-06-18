@@ -19,10 +19,7 @@ spec:
               metadata:
                 name: e2e-valid-vrf
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -44,14 +41,14 @@ spec:
         - script:
             content: |
               set -e
-              RD=$(kubectl get bgpvrf e2e-valid-vrf \
+              RD=$(kubectl get bgpvrf e2e-valid-vrf -n "$NAMESPACE" \
                 -o jsonpath='{.spec.routeDistinguisher}')
-              IRT=$(kubectl get bgpvrf e2e-valid-vrf \
+              IRT=$(kubectl get bgpvrf e2e-valid-vrf -n "$NAMESPACE" \
                 -o jsonpath='{.spec.importRouteTargets[0].value}')
-              ERT=$(kubectl get bgpvrf e2e-valid-vrf \
+              ERT=$(kubectl get bgpvrf e2e-valid-vrf -n "$NAMESPACE" \
                 -o jsonpath='{.spec.exportRouteTargets[0].value}')
-              INST=$(kubectl get bgpvrf e2e-valid-vrf \
-                -o jsonpath='{.spec.instanceRef}')
+              ROUTER=$(kubectl get bgpvrf e2e-valid-vrf -n "$NAMESPACE" \
+                -o jsonpath='{.spec.routerRef}')
               if [ "$RD" != "65000:100" ]; then
                 echo "ERROR: routeDistinguisher = $RD, want 65000:100"
                 exit 1
@@ -64,11 +61,11 @@ spec:
                 echo "ERROR: exportRouteTargets[0].value = $ERT, want 65000:100"
                 exit 1
               fi
-              if [ "$INST" != "overlay" ]; then
-                echo "ERROR: instanceRef = $INST, want overlay"
+              if [ "$ROUTER" != "bgp-e2e-worker" ]; then
+                echo "ERROR: routerRef = $ROUTER, want bgp-e2e-worker"
                 exit 1
               fi
-              echo "OK: all fields stored correctly (RD=$RD IRT=$IRT ERT=$ERT instanceRef=$INST)"
+              echo "OK: all fields stored correctly (RD=$RD IRT=$IRT ERT=$ERT routerRef=$ROUTER)"
 
     - name: vrf-ip-format-rd
       try:
@@ -81,10 +78,7 @@ spec:
               metadata:
                 name: e2e-vrf-ip-rd
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 routeDistinguisher: "192.0.2.1:100"
                 importRouteTargets:
                   - value: "192.0.2.1:100"
@@ -105,10 +99,7 @@ spec:
               metadata:
                 name: e2e-vrf-multi-rt
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 routeDistinguisher: "65000:200"
                 importRouteTargets:
                   - value: "65000:200"
@@ -139,10 +130,7 @@ spec:
               metadata:
                 name: e2e-vrf-bad-rd
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 routeDistinguisher: "not-valid"
                 importRouteTargets:
                   - value: "65000:100"
@@ -171,10 +159,7 @@ spec:
               metadata:
                 name: e2e-vrf-bad-rt
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "bad-rt"
@@ -203,10 +188,7 @@ spec:
               metadata:
                 name: e2e-vrf-empty-irt
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets: []
                 exportRouteTargets:
@@ -234,10 +216,7 @@ spec:
               metadata:
                 name: e2e-vrf-empty-ert
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -254,7 +233,7 @@ spec:
               echo "OK: empty exportRouteTargets correctly rejected"
               echo "Server response: $OUTPUT"
 
-    - name: reject-missing-instance-ref
+    - name: reject-missing-router-ref
       try:
         - script:
             content: |
@@ -263,11 +242,8 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPVRFInstance
               metadata:
-                name: e2e-vrf-no-instance
+                name: e2e-vrf-no-router
               spec:
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -278,11 +254,11 @@ spec:
               EXIT=$?
               set -e
               if [ "$EXIT" -eq 0 ]; then
-                echo "ERROR: expected rejection of missing instanceRef but resource was accepted"
-                kubectl delete bgpvrf e2e-vrf-no-instance 2>/dev/null || true
+                echo "ERROR: expected rejection of missing routerRef but resource was accepted"
+                kubectl delete bgpvrf e2e-vrf-no-router 2>/dev/null || true
                 exit 1
               fi
-              echo "OK: missing instanceRef correctly rejected"
+              echo "OK: missing routerRef correctly rejected"
               echo "Server response: $OUTPUT"
 
     - name: reject-missing-rd
@@ -296,10 +272,7 @@ spec:
               metadata:
                 name: e2e-vrf-no-rd
               spec:
-                instanceRef: overlay
-                providerSelector:
-                  matchLabels:
-                    plane: overlay
+                routerRef: bgp-e2e-worker
                 importRouteTargets:
                   - value: "65000:100"
                 exportRouteTargets:

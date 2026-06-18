@@ -29,9 +29,8 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          BGPExternalPeer is a registry entry for a BGP peer outside the cosmos-managed fleet.
-          Referenced by BGPSession.spec.toPeers — the address and ASN are resolved at session write time.
+        description: BGPExternalPeer is a registry entry for a BGP peer outside the
+          cosmos-managed fleet.
         properties:
           apiVersion:
             description: |-
@@ -135,17 +134,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              referencedBy:
-                description: ReferencedBy is the count of BGPSession resources referencing
-                  this external peer.
-                format: int32
-                type: integer
-              referencedByList:
-                description: ReferencedByList names up to 50 referencing BGPSession
-                  resources.
-                items:
-                  type: string
-                type: array
             type: object
         type: object
     served: true

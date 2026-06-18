@@ -5,7 +5,8 @@ metadata:
 spec:
   description: >
     Verify that BGPRoutePolicy resources are accepted by the API server with valid
-    conditions and that the operator reconciles them without error.
+    conditions. Creates a policy with an export direction and ordered terms, then
+    asserts the resource is stored and no error conditions are present.
   steps:
     - name: cleanup-stale
       try:
@@ -23,17 +24,24 @@ spec:
               metadata:
                 name: e2e-export-filter
               spec:
-                instanceRef: default
-                exportStatements:
-                  - name: accept-2001-db8
-                    conditions:
-                      prefixSets:
-                        - "2001:db8::/32"
-                    actions:
-                      routeDisposition: Accept
-                  - name: reject-all
-                    actions:
-                      routeDisposition: Reject
+                routerRef:
+                  name: bgp-e2e-worker
+                direction: export
+                terms:
+                  - sequence: 10
+                    match:
+                      addressFamilies:
+                        - afi: ipv6
+                          safi: unicast
+                    action: permit
+                    set:
+                      communities:
+                        add:
+                          - "65000:100"
+                  - sequence: 20
+                    match:
+                      any: true
+                    action: deny
 
     - name: assert-route-policy-applied
       try:
@@ -50,10 +58,9 @@ spec:
         - script:
             content: |
               set -e
-              # Check per-provider conditions for error reasons (conditions live in
-              # status.providers[*].conditions, not the top-level status.conditions).
+              # Check top-level conditions for error reasons.
               REASONS=$(kubectl get bgproutepolicy e2e-export-filter \
-                -o jsonpath='{range .status.providers[*]}{range .conditions[*]}{.reason}{"\n"}{end}{end}' 2>/dev/null || echo "")
+                -o jsonpath='{range .status.conditions[*]}{.reason}{"\n"}{end}' 2>/dev/null || echo "")
               if echo "$REASONS" | grep -qi "failed\|invalid\|error"; then
                 echo "ERROR: unexpected error condition on BGPRoutePolicy"
                 kubectl get bgproutepolicy e2e-export-filter -o yaml

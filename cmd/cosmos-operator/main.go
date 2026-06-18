@@ -17,62 +17,39 @@ limitations under the License.
 package main
 
 import (
-	"context"
-	"fmt"
+	"flag"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/spf13/cobra"
-
-	bgpcontroller "go.miloapis.com/cosmos/internal/controller"
 )
 
 func main() {
-	if err := newRootCommand().Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
+	healthAddr := flag.String("health-addr", ":8087", "Address for health probes")
+	_ = flag.String("metrics-addr", ":8086", "Address for metrics (unused)")
+	flag.Parse()
 
-type options struct {
-	metricsAddr string
-	healthAddr  string
-}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
-func newRootCommand() *cobra.Command {
-	opts := &options{}
+	srv := &http.Server{Addr: *healthAddr, Handler: mux}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("health server error: %v", err)
+		}
+	}()
 
-	cmd := &cobra.Command{
-		Use:   "cosmos-operator",
-		Short: "Cosmos operator — reconciles network CRDs against local BGP daemons",
-		Long: `Cosmos reconciles network CRDs against independently-running BGP daemons.
-It reconciles BGPProvider, BGPInstance, BGPPeer, BGPAdvertisement, BGPRoutePolicy,
-and BGPExternalPeer CRDs. BGPProvider resources specify the gRPC endpoint of a
-remote BGP agent that implements the BGPProviderService proto interface.`,
-		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cmd.Context(), opts)
-		},
-	}
+	log.Printf("cosmos-operator: running in API-only mode, health server on %s", *healthAddr)
 
-	cmd.Flags().StringVar(&opts.metricsAddr, "metrics-addr", ":8082", "Address to serve Prometheus metrics on")
-	cmd.Flags().StringVar(&opts.healthAddr, "health-addr", ":8083", "Address to serve health/readiness probes on")
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
 
-	return cmd
-}
-
-func run(ctx context.Context, opts *options) error {
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	nodeName := os.Getenv("NODE_NAME")
-	if nodeName == "" {
-		log.Printf("cosmos: NODE_NAME not set — provider auto-bootstrap disabled")
-	}
-
-	log.Printf("cosmos: starting (node=%s)", nodeName)
-
-	return bgpcontroller.Run(ctx, opts.metricsAddr, opts.healthAddr, nodeName)
+	log.Println("cosmos-operator: shutting down")
 }

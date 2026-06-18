@@ -5,371 +5,432 @@ stage: alpha
 
 # BGP API Reference
 
-**API Groups:** `bgp.miloapis.com/v1alpha1` · `providers.bgp.miloapis.com/v1alpha1`
+**API Group:** `bgp.miloapis.com/v1alpha1`
 **Stability:** Alpha — fields and defaults may change without deprecation notice
 
 ---
 
 ## 1. Overview
 
-Cosmos is the BGP control plane for the Datum.net fleet. BGP CRDs marshal
-configuration calls to `BGPProvider` resources. Each `BGPProvider` points to a
-remote agent that implements the `BGPProviderService` gRPC interface. Cosmos has
-no built-in knowledge of what daemon or process runs behind a provider — it only
-cares that the endpoint satisfies the gRPC contract.
+Cosmos provides Kubernetes APIs for expressing BGP routing intent. It is an
+API project: it defines resources, relationships, validation, and status
+contracts. Cosmos does not define how routing intent is realized.
 
 The fleet uses two BGP planes per node:
 
 | Plane | Purpose |
 |-------|---------|
 | **Underlay** | IPv6 unicast fabric routing between nodes and top-of-rack switches |
-| **Overlay** | L3VPN (VPNv4/VPNv6) distribution for tenant workloads |
+| **Overlay** | L2VPN EVPN distribution for tenant workloads |
 
-Each plane is represented by a separate `BGPProvider` resource with plane-specific
-labels. `BGPInstance`, `BGPPeer`, and other resources target providers by label
-selector — never by daemon type or implementation detail.
+Each plane is represented by a separate `BGPRouter` resource. `BGPPeer`,
+`BGPAdvertisement`, and `BGPRoutePolicy` resources target a router by direct
+reference (`routerRef`) or label selector (`routerSelector`).
 
-### API Groups
+### API Group
 
 | Group | Purpose |
 |-------|---------|
-| `providers.bgp.miloapis.com/v1alpha1` | BGP agent lifecycle (BGPProvider) |
-| `bgp.miloapis.com/v1alpha1` | BGP speaker config, sessions, advertisements, and policies |
+| `bgp.miloapis.com/v1alpha1` | BGP routing context, sessions, advertisements, and policies |
 
-All resources in both groups are **cluster-scoped** because BGP topology spans namespace boundaries.
-
----
-
-## 2. Cluster Roles
-
-The fleet operates three cluster roles. Each role runs a specific subset of cosmos resources.
-
-### POP cluster
-
-A point-of-presence cluster. Runs on every edge node.
-
-- Runs **BGPProvider** (auto-bootstrapped by cosmos startup)
-- Runs **BGPInstance** for `underlay` and `overlay` planes
-- Receives **BGPPeer** resources propagated from the management cluster via Karmada
-- Runs **BGPAdvertisement** for loopbacks and SRv6 locators
-- Runs **BGPRoutePolicy** for import/export filtering
-
-### Infra cluster
-
-A regional infrastructure cluster. Hosts route reflectors.
-
-- Runs **BGPProvider** for the RR agent instance
-- Runs **BGPInstance** for the RR speaker (VPNv4/VPNv6)
-- Receives **BGPPeer** resources from the management cluster
-
-### Management cluster
-
-The central orchestrator. Does not run any BGP agents.
-
-- Holds the authoritative **BGPExternalPeer** registry (ToR switches, upstream peers)
-- Writes **BGPPeer** resources and propagates them to POP and infra clusters via Karmada
+All resources are **Namespaced**.
 
 ---
 
-## 3. CRD Reference
+## 2. CRD Reference
 
-There are exactly 6 CRDs across the two API groups.
-
-| Kind | API Group | Cluster Role | Short Name |
-|------|-----------|--------------|------------|
-| [BGPProvider](#bgpprovider) | `providers.bgp.miloapis.com/v1alpha1` | POP, Infra | `bgpp` |
-| [BGPInstance](#bgpinstance) | `bgp.miloapis.com/v1alpha1` | POP, Infra | `bgpi` |
-| [BGPPeer](#bgppeer) | `bgp.miloapis.com/v1alpha1` | POP, Infra, Mgmt | `bgppr` |
-| [BGPAdvertisement](#bgpadvertisement) | `bgp.miloapis.com/v1alpha1` | POP | `bgpadv` |
-| [BGPRoutePolicy](#bgproutepolicy) | `bgp.miloapis.com/v1alpha1` | POP | `bgprp` |
-| [BGPExternalPeer](#bgpexternalpeer) | `bgp.miloapis.com/v1alpha1` | Mgmt | `bgpep` |
+| Kind | Short Name | Targeting |
+|------|------------|-----------|
+| [BGPRouter](#bgprouter) | `bgpr` | — |
+| [BGPPeer](#bgppeer) | `bgppr` | `routerRef` XOR `routerSelector` |
+| [BGPAdvertisement](#bgpadvertisement) | `bgpadv` | `routerRef` only |
+| [BGPRoutePolicy](#bgproutepolicy) | `bgprp` | `routerRef` XOR `routerSelector` |
+| [BGPExternalPeer](#bgpexternalpeer) | `bgpep` | — |
 
 ---
 
-### BGPProvider
+## 3. Common Types
 
-`BGPProvider` represents one remote BGP agent instance that cosmos connects to
-via gRPC. It is **auto-bootstrapped at cosmos startup** — operators do not create
-BGPProvider resources manually.
+### AddressFamily
 
-The provider is the anchor for all other resources: BGPInstance, BGPPeer,
-BGPAdvertisement, and BGPRoutePolicy all select a provider via `providerRef` or
-`providerSelector`.
+Address families are expressed as an AFI/SAFI struct. Invalid combinations
+are rejected at the CRD validation layer.
+
+```yaml
+addressFamilies:
+  - afi: ipv6
+    safi: unicast
+```
+
+| AFI     | SAFI      | Use                             |
+|---------|-----------|---------------------------------|
+| `ipv4`  | `unicast` | IPv4 unicast routing            |
+| `ipv6`  | `unicast` | IPv6 unicast routing (underlay) |
+| `l2vpn` | `evpn`    | EVPN overlay routing            |
+
+### RouterTarget
+
+Resources that can target one or more routers embed `RouterTarget`. Exactly
+one of `routerRef` or `routerSelector` must be set — both or neither is
+rejected by CEL validation.
+
+```yaml
+# Direct reference (single router)
+routerRef:
+  name: node-1-underlay
+
+# Label selector (multiple routers)
+routerSelector:
+  matchLabels:
+    bgp.miloapis.com/role: fabric
+```
+
+---
+
+### BGPRouter
+
+`BGPRouter` defines a logical BGP routing context. It identifies the execution
+target, local AS number, router ID, functional roles, and address families. It
+is the primary ownership boundary for `BGPPeer`, `BGPAdvertisement`, and
+`BGPRoutePolicy` resources.
 
 #### Spec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | `string` | No | Free-form label identifying the agent implementation. Informational only; cosmos does not interpret this value. |
-| `endpoint` | `string` | No | gRPC address of the remote BGP agent. Default: `localhost:50051`. |
+| `targetRef` | `TargetRef` | Yes | Identifies the execution target. |
+| `targetRef.kind` | `string` | Yes | Target resource kind. Supported: `Node`. |
+| `targetRef.name` | `string` | Yes | Name of the target resource. |
+| `roles` | `[]RouterRole` | Yes | Functional roles. Minimum 1. |
+| `localASN` | `uint32` | Yes | Local AS number. Range: 1–4294967295. |
+| `routerID` | `string` | Yes | Router ID in IPv4 dotted-decimal notation. |
+| `addressFamilies` | `[]AddressFamily` | Yes | Address families this router activates. Minimum 1. |
+
+**RouterRole** (string enum)
+
+| Value | Meaning |
+|-------|---------|
+| `fabric` | Router participates in the internal fabric (underlay or overlay). |
+| `tenant` | Router serves a tenant workload network. |
+| `transit` | Router carries transit traffic between autonomous systems. |
 
 #### Status
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | `[]metav1.Condition` | Current state. See conditions table below. |
-| `capabilities` | `ProviderCapabilities` | Address families supported, route reflection support, BFD support. Populated from the agent's response at reconcile time. |
-| `resolvedEndpoint` | `string` | The gRPC endpoint that was validated and connected. |
-| `daemon` | `string` | Reflects `spec.type` — the agent type label set at bootstrap time. |
+| `phase` | `string` | Current phase. Enum: `Pending`, `Ready`, `Failed`. |
+| `observedGeneration` | `int64` | Last spec generation reflected in this status. |
+| `roles` | `[]RouterRole` | Active roles as observed by the implementation. |
+| `peers` | `BGPRouterPeerSummary` | Peer session counts. |
+| `conditions` | `[]metav1.Condition` | Top-level conditions. |
 
-**ProviderCapabilities**
+**BGPRouterPeerSummary**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `addressFamilies` | `[]AddressFamilyCapability` | AFI/SAFI combinations supported by this agent. |
-| `routeReflection` | `bool` | Whether the agent supports route reflector operation. |
-| `bfd` | `bool` | Whether the agent supports BFD. |
+| `total` | `int32` | Total number of configured peers. |
+| `established` | `int32` | Count of peers currently in Established state. |
 
-**BGPProvider Conditions**
+**BGPRouter Conditions**
 
-| Type | Meaning |
-|------|---------|
-| `Ready` | `True` when the remote agent is reachable and responsive on `spec.endpoint`. `False` when the connection fails or the health probe returns an error. |
-| `InvalidEndpoint` | Set when `spec.endpoint` is absent or malformed. |
-| `DeletionBlocked` | Set when deletion is blocked because a BGPInstance, BGPPeer, BGPAdvertisement, or BGPRoutePolicy still selects this provider. |
+| Type | Required | Meaning when True |
+|------|----------|-------------------|
+| `Ready` | Required | Router is fully configured and the runtime is accepting routing intent. |
+| `RuntimeAvailable` | Required | The routing runtime is reachable and accepting configuration. |
+| `ConfigApplied` | Required | Current spec has been translated and applied to the runtime. |
+| `Degraded` | Required | One or more configured peers has not reached Established state. |
+| `PeersEstablished` | Optional | All configured peers have reached Established state. |
 
 #### Example
 
-See [`pop-bgpprovider-auto.yaml`](../examples/pop-bgpprovider-auto.yaml).
-
----
-
-### BGPInstance
-
-`BGPInstance` declares the BGP speaker configuration for an agent: the local AS,
-router ID, address families, optional BGP timers, and best-path settings. One
-BGPInstance is created per plane per node.
-
-When `routeReflector` is set, the instance configures the agent as a route
-reflector for the specified cluster ID. This field is only valid in infra clusters.
-
-#### Spec
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `providerSelector` | `metav1.LabelSelector` | Yes | Selects which BGPProvider resources this instance configures. |
-| `asNumber` | `int64` | Yes | Local AS number. Range: 1–4294967295. |
-| `routerIDSource` | `string` | No | How the router ID is determined. `Auto` (default) derives it from the last 32 bits of the node's IPv6 InternalIP. `Manual` requires `routerID` to be set. Enum: `Auto`, `Manual`. |
-| `routerID` | `string` | No | Router ID in dotted-decimal IPv4 notation. Required when `routerIDSource` is `Manual`. |
-| `addressFamilies` | `[]AddressFamily` | Yes | Address families to activate. Minimum 1. |
-| `timers` | `BGPInstanceTimers` | No | Session-level BGP timer defaults. |
-| `bestPath` | `BestPathConfig` | No | Best-path selection parameters. |
-| `routeReflector` | `RouteReflectorConfig` | No | Enables route reflector mode. **Infra clusters only.** |
-
-**AddressFamily**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `afi` | `string` | Yes | Address Family Indicator. Enum: `IPv4`, `IPv6`, `L2VPN`. |
-| `safi` | `string` | Yes | Subsequent AFI. Enum: `Unicast`, `VPNUnicast`, `EVPN`. |
-
-**BGPInstanceTimers**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `defaultHoldTime` | `int32` | Default hold time in seconds. Minimum: 3. Default: 90. |
-| `defaultKeepalive` | `int32` | Default keepalive interval in seconds. Minimum: 1. Default: 30. |
-
-**BestPathConfig**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `alwaysCompareMed` | `bool` | Enable MED comparison across different ASes. |
-| `deterministicMed` | `bool` | Enable deterministic MED comparison. |
-| `compareRouterId` | `bool` | Use router ID as a tiebreaker in best-path selection. |
-
-**RouteReflectorConfig**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `clusterID` | `string` | Yes | Route reflector cluster ID in dotted-decimal IPv4 notation. |
-
-#### Status
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `conditions` | `[]metav1.Condition` | Top-level conditions for this BGPInstance. |
-| `providers` | `[]ProviderStatus` | Per-provider reconciliation status. Keyed by `providerName`. |
-
-**BGPInstance Conditions (per provider)**
-
-| Type | Meaning |
-|------|---------|
-| `Ready` | `True` when the speaker has been configured in the agent with the spec AS, router ID, and address families. |
-| `RouteReflectorInPOPCluster` | Set when `spec.routeReflector` is present on a POP cluster node. Route reflection is not supported in POP clusters. |
-
-#### Examples
-
-See [`pop-bgpinstance-underlay.yaml`](../examples/pop-bgpinstance-underlay.yaml),
-[`pop-bgpinstance-overlay.yaml`](../examples/pop-bgpinstance-overlay.yaml), and
-[`infra-bgpinstance-rr.yaml`](../examples/infra-bgpinstance-rr.yaml).
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRouter
+metadata:
+  name: node-1-underlay
+  namespace: default
+  labels:
+    bgp.miloapis.com/role: fabric
+spec:
+  targetRef:
+    kind: Node
+    name: node-1
+  roles:
+    - fabric
+  localASN: 65000
+  routerID: "10.0.0.1"
+  addressFamilies:
+    - afi: ipv6
+      safi: unicast
+```
 
 ---
 
 ### BGPPeer
 
-`BGPPeer` represents one side of a configured BGP session within an agent.
-BGPPeer resources are created directly — operators write them in the management
-cluster and Karmada propagates them to POP and infra clusters.
-
-Each BGPPeer is reconciled by the PeerReconciler, which calls `AddPeer`/`UpdatePeer`/`DeletePeer` on the agent.
+`BGPPeer` defines a BGP session to a remote peer. It binds to one or more
+`BGPRouter` instances via `routerRef` or `routerSelector`.
 
 #### Spec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `instanceRef` | `string` | Yes | Name of the BGPInstance for this peer session. |
-| `providerRef` | `string` | Conditional | Name of a BGPProvider. Mutually exclusive with `providerSelector`. |
-| `providerSelector` | `metav1.LabelSelector` | Conditional | Label selector for BGPProvider resources. Mutually exclusive with `providerRef`. |
-| `address` | `string` | Yes | IPv6 address of the remote BGP peer. |
-| `asNumber` | `int64` | Yes | AS number of the remote peer. Range: 1–4294967295. |
-| `addressFamilies` | `[]AddressFamily` | No | Address families to negotiate. If absent, inherited from the referenced BGPInstance. |
-| `timers` | `BGPPeerTimers` | No | Per-peer timer overrides. |
-| `allowAsIn` | `*int32` | No | Number of times the peer's AS is allowed in received AS paths. Range: 1–10. |
-| `routeReflectorClient` | `bool` | No | When `true`, the agent treats this peer as a route reflector client. |
-| `passive` | `bool` | No | Enables passive mode — do not initiate the TCP connection. Default: false. |
-| `ebgpMultihop` | `*int32` | No | eBGP multihop TTL. Range: 1–255. Mutually exclusive with `ttlSecurity`. Invalid on iBGP sessions. |
-| `ttlSecurity` | `*int32` | No | GTSM minimum expected TTL for incoming eBGP packets. Range: 1–254. Mutually exclusive with `ebgpMultihop`. |
-| `remotePort` | `*int32` | No | TCP port to connect to on the remote peer. Range: 1–65535. Default: 179. |
-| `passwordSecretRef` | `SecretKeyRef` | No | References a Secret containing the BGP session password. |
+| `routerRef` | `RouterRef` | Conditional | Direct reference to a single BGPRouter. Mutually exclusive with `routerSelector`. |
+| `routerSelector` | `RouterSelector` | Conditional | Label selector for BGPRouter resources. Mutually exclusive with `routerRef`. |
+| `peerASN` | `uint32` | Yes | Remote AS number. Range: 1–4294967295. |
+| `address` | `string` | Yes | Remote peer's IPv4 or IPv6 address. |
+| `description` | `string` | No | Human-readable label for this peer (e.g., `"spine-1"`). |
+| `authSecretRef` | `LocalSecretRef` | No | References a Secret containing the MD5 TCP authentication password under key `"password"`. |
+| `addressFamilies` | `[]AddressFamily` | Yes | Address families negotiated on this session. Minimum 1. |
+| `holdTime` | `Duration` | No | BGP hold timer. Must be 0 (disabled) or ≥ 3s. Default: `90s`. |
+| `keepaliveTime` | `Duration` | No | BGP keepalive interval. Must be ≤ holdTime / 3. Default: `30s`. |
 
-**BGPPeerTimers**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `holdTime` | `*int32` | Hold time override. Minimum: 3 seconds. |
-| `keepalive` | `*int32` | Keepalive interval override. Minimum: 1 second. |
-
-**SecretKeyRef**
+**LocalSecretRef**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | `string` | Yes | Name of the Secret. |
-| `key` | `string` | Yes | Key within the Secret containing the password. |
+| `name` | `string` | Yes | Name of the Secret in the same namespace. |
+
+> Timer fields use Go duration strings (e.g., `"90s"`, `"1m30s"`). Both forms
+> are valid; implementations must accept either.
 
 #### Status
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | `[]metav1.Condition` | Top-level conditions for this BGPPeer. |
-| `providers` | `[]ProviderStatus` | Per-provider reconciliation status. Keyed by `providerName`. |
+| `observedGeneration` | `int64` | Last spec generation reflected in this status. |
+| `sessionState` | `string` | Current BGP FSM state. |
+| `lastEstablishedTime` | `Time` | Timestamp of the most recent Established transition. |
+| `conditions` | `[]metav1.Condition` | Top-level conditions. |
 
-**BGPPeer Conditions (per provider)**
+**Session State** (string enum)
 
-| Type | Meaning |
-|------|---------|
-| `Configured` | `True` when the peer has been successfully registered in the agent via `AddPeer`/`UpdatePeer`. |
-| `SessionEstablished` | `True` when the BGP FSM for this peer is in `Established` state. Refreshed on a polling interval. |
+`Idle` → `Connect` → `Active` → `OpenSent` → `OpenConfirm` → `Established`
+
+**BGPPeer Conditions**
+
+| Type | Required | Meaning when True |
+|------|----------|-------------------|
+| `Ready` | Required | Session is Established and address families have been negotiated. |
+| `Accepted` | Required | Peer config has been accepted by the runtime. |
+| `SessionIdle` | Required | BGP FSM is in Idle state. |
+| `SessionConnect` | Required | BGP FSM is in Connect state. |
+| `SessionActive` | Required | BGP FSM is in Active state. |
+| `SessionOpenSent` | Required | BGP FSM is in OpenSent state. |
+| `SessionOpenConfirm` | Required | BGP FSM is in OpenConfirm state. |
+| `SessionEstablished` | Required | BGP FSM is in Established state. |
+
+The session FSM state conditions (`SessionIdle` through `SessionEstablished`)
+are mutually exclusive — exactly one must be `True` at any time.
+
+#### Example
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPeer
+metadata:
+  name: node-1-to-tor-1
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  peerASN: 65000
+  address: "2001:db8:fabric::1"
+  description: "tor-1"
+  addressFamilies:
+    - afi: ipv6
+      safi: unicast
+  holdTime: 90s
+  keepaliveTime: 30s
+```
 
 ---
 
 ### BGPAdvertisement
 
-`BGPAdvertisement` declares infrastructure prefixes to inject into the BGP RIB.
-Typical uses are loopback addresses and SRv6 locator blocks. The
-AdvertisementReconciler calls `AddPath` on the agent; on deletion it calls
-`DeletePath`.
-
-BGPAdvertisement targets providers with Unicast address families. VPN address
-families are not supported on this resource.
+`BGPAdvertisement` defines routing information to advertise from a single
+`BGPRouter`. Prefixes are specified inline. Only `routerRef` is supported —
+selector fan-out is intentionally omitted to avoid ambiguous prefix attribution.
 
 #### Spec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `instanceRef` | `string` | Yes | Name of the BGPInstance to advertise through. Must reference an instance bound to providers with Unicast address families. |
-| `prefixes` | `[]string` | Yes | IPv4 or IPv6 unicast CIDR prefixes to advertise. Minimum 1. |
-| `peerSelector` | `metav1.LabelSelector` | No | Restricts advertisement to matched BGPPeer resources. If absent, advertise to all peers on matched providers. |
+| `routerRef` | `RouterRef` | Yes | Direct reference to a single BGPRouter. |
+| `addressFamily` | `AddressFamily` | Yes | AFI/SAFI for this advertisement. |
+| `prefixes` | `[]string` | Yes | CIDR prefixes to advertise. Minimum 1. |
+| `communities` | `[]string` | No | BGP communities to attach to advertised prefixes. |
+| `localPreference` | `*uint32` | No | BGP LOCAL_PREF attribute. Only meaningful for iBGP sessions. |
 
 #### Status
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | `[]metav1.Condition` | Top-level conditions for this BGPAdvertisement. |
-| `providers` | `[]ProviderStatus` | Per-provider reconciliation status. |
+| `observedGeneration` | `int64` | Last spec generation reflected in this status. |
+| `advertisedPrefixes` | `int32` | Count of prefixes currently being originated. |
+| `conditions` | `[]metav1.Condition` | Top-level conditions. |
 
-**BGPAdvertisement Conditions (per provider)**
+**BGPAdvertisement Conditions**
 
-| Type | Meaning |
-|------|---------|
-| `Advertised` | `True` when all prefixes have been injected into the agent RIB. |
-| `UnsupportedAddressFamily` | Set when the referenced instance's address family is not supported (e.g., VPN SAFI). |
+| Type | Required | Meaning when True |
+|------|----------|-------------------|
+| `Ready` | Required | Advertisement is active and prefixes are being originated. |
+| `Accepted` | Required | Advertisement config accepted by the runtime. |
+| `Advertised` | Required | Prefixes are confirmed as advertised to at least one peer. |
+
+#### Example
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPAdvertisement
+metadata:
+  name: node-1-loopback
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  addressFamily:
+    afi: ipv6
+    safi: unicast
+  prefixes:
+    - "2001:db8:loopback::1/128"
+  localPreference: 100
+```
 
 ---
 
 ### BGPRoutePolicy
 
-`BGPRoutePolicy` declares import and/or export filtering rules for a BGP instance.
-The RoutePolicyReconciler applies defined sets and policies via the agent's policy
-API. Statements within each direction are evaluated in order; the first match wins.
-
-Multiple BGPRoutePolicy resources can apply to the same instance and peer set.
-They are evaluated in descending `priority` order; equal-priority policies are
-sorted by `metadata.name` ascending.
+`BGPRoutePolicy` defines composable, ordered routing policy statements applied
+to a BGPRouter in a specific direction (import or export). It binds to one or
+more `BGPRouter` instances via `routerRef` or `routerSelector`.
 
 #### Spec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `instanceRef` | `string` | Yes | Name of the BGPInstance this policy applies to. |
-| `peerSelector` | `metav1.LabelSelector` | No | Selects BGPPeer resources this policy applies to. If absent, applies to all peers on the instance. |
-| `priority` | `int32` | No | Policy ordering priority. Higher value = evaluated first. Range: 0–1000. Default: 100. |
-| `importStatements` | `[]PolicyStatement` | No | Statements evaluated on routes received from peers. |
-| `exportStatements` | `[]PolicyStatement` | No | Statements evaluated on routes sent to peers. |
+| `routerRef` | `RouterRef` | Conditional | Direct reference to a single BGPRouter. Mutually exclusive with `routerSelector`. |
+| `routerSelector` | `RouterSelector` | Conditional | Label selector for BGPRouter resources. Mutually exclusive with `routerRef`. |
+| `direction` | `string` | Yes | Policy direction. Enum: `import`, `export`. |
+| `terms` | `[]BGPRoutePolicyTerm` | Yes | Ordered list of policy statements. Minimum 1. Evaluated ascending by `sequence`. |
 
-**PolicyStatement**
+**BGPRoutePolicyTerm**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | `string` | Yes | Statement identifier. |
-| `conditions` | `PolicyConditions` | No | Route match conditions. If absent, the statement matches all routes. |
-| `actions` | `PolicyActions` | Yes | Actions to apply on match. |
+| `sequence` | `int32` | Yes | Evaluation order. Range: 1–65535. Must be unique within the policy. |
+| `match` | `BGPRoutePolicyMatch` | Yes | Conditions under which this term fires. |
+| `action` | `string` | Yes | Disposition on match. Enum: `permit`, `deny`. |
+| `set` | `PolicySetActions` | No | Mutations applied on `permit`. Must not be set on `deny` terms. |
 
-**PolicyConditions**
+**BGPRoutePolicyMatch**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `prefixSets` | `[]string` | Names of prefix sets to match. |
-| `communitySet` | `string` | Name of a community set to match. |
-| `nextHopSet` | `string` | Name of a next-hop set to match. |
+| `any` | `bool` | When true, matches all routes. Mutually exclusive with other match fields. |
+| `addressFamilies` | `[]AddressFamily` | Constrains match to specific AFI/SAFI combinations. If empty, all address families are matched. |
 
-**PolicyActions**
+**PolicySetActions**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `routeDisposition` | `string` | Yes | Action on match. Enum: `Accept`, `Reject`. |
-| `setCommunity` | `SetCommunityAction` | No | Add, replace, or remove BGP communities. |
-| `setLocalPreference` | `*int32` | No | Set the LOCAL_PREF attribute. Only meaningful on iBGP sessions. |
-| `setMED` | `*int32` | No | Set the Multi-Exit Discriminator attribute. |
-| `setNextHop` | `string` | No | Set the next-hop address. |
+| Field | Type | Description |
+|-------|------|-------------|
+| `communities` | `CommunitySet` | Community add/remove operations. |
+| `localPreference` | `*uint32` | Sets LOCAL_PREF. Only meaningful on import (iBGP) or export to iBGP peers. |
 
-**SetCommunityAction**
+**CommunitySet**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `communities` | `[]string` | Yes | Community values to set (e.g. `"65000:100"`). |
-| `method` | `string` | Yes | How to apply communities. Enum: `Add`, `Replace`, `Remove`. |
+| Field | Type | Description |
+|-------|------|-------------|
+| `add` | `[]string` | Communities to attach (e.g., `"65000:100"`). |
+| `remove` | `[]string` | Communities to strip. |
+
+#### Validation
+
+- Term `sequence` numbers must be unique within a policy (CEL enforced).
+- `set` actions must not be specified on `deny` terms (CEL enforced).
 
 #### Status
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `providers` | `[]ProviderStatus` | Per-provider reconciliation status. |
+| `observedGeneration` | `int64` | Last spec generation reflected in this status. |
+| `conditions` | `[]metav1.Condition` | Top-level conditions. |
 
-**BGPRoutePolicy Conditions (per provider)**
+**BGPRoutePolicy Conditions**
 
-| Type | Meaning |
-|------|---------|
-| `Applied` | `True` when the policy has been installed in the agent policy table. |
+| Type | Required | Meaning when True |
+|------|----------|-------------------|
+| `Ready` | Required | Policy is active and applied to at least one router. |
+| `Accepted` | Required | Policy config accepted by the runtime. |
+| `PolicyApplied` | Required | Policy terms are confirmed applied to the target routers. |
+
+#### Examples
+
+```yaml
+# Export policy — tag fabric routes and deny everything else
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRoutePolicy
+metadata:
+  name: fabric-export-policy
+  namespace: default
+spec:
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: fabric
+  direction: export
+  terms:
+    - sequence: 10
+      match:
+        addressFamilies:
+          - afi: ipv6
+            safi: unicast
+      action: permit
+      set:
+        communities:
+          add: ["65001:100"]
+          remove: ["65001:200"]
+        localPreference: 150
+    - sequence: 20
+      match:
+        any: true
+      action: deny
+```
+
+```yaml
+# Import policy — accept EVPN routes and tag them
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRoutePolicy
+metadata:
+  name: evpn-import-filter
+  namespace: default
+spec:
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: tenant
+  direction: import
+  terms:
+    - sequence: 10
+      match:
+        addressFamilies:
+          - afi: l2vpn
+            safi: evpn
+      action: permit
+      set:
+        communities:
+          add: ["65001:200"]
+    - sequence: 20
+      match:
+        any: true
+      action: deny
+```
 
 ---
 
 ### BGPExternalPeer
 
 `BGPExternalPeer` is the registry of BGP peers that exist outside the cosmos
-fleet: top-of-rack switches, upstream transit routers, and other external devices.
-Resources live in the management cluster only and are never propagated to POP or
-infra clusters.
+fleet: top-of-rack switches, upstream transit routers, and other external
+devices. Resources live in the management cluster only and are cluster-scoped.
 
 #### Spec
 
@@ -377,13 +438,13 @@ infra clusters.
 |-------|------|----------|-------------|
 | `address` | `string` | Yes | IPv6 address of the external peer. |
 | `asNumber` | `int64` | Yes | AS number of the external peer. Range: 1–4294967295. |
-| `description` | `string` | No | Human-readable description (device name, location). Maximum 256 characters. |
+| `description` | `string` | No | Human-readable description. Maximum 256 characters. |
 
 #### Status
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | `[]metav1.Condition` | Flat status for the external peer object. |
+| `conditions` | `[]metav1.Condition` | Conditions for this external peer object. |
 
 #### Example
 
@@ -393,181 +454,40 @@ See [`mgmt-bgpexternalpeer-tor.yaml`](../examples/mgmt-bgpexternalpeer-tor.yaml)
 
 ## 4. Design Principles
 
-**Provider abstraction.** All reconciliation is mediated through BGPProvider.
-Controllers never talk to an agent directly — they reconcile through the provider
-interface. Any BGP agent that implements `BGPProviderService` can be used; cosmos
-drives all of them identically.
+**Intent over implementation.** The API describes desired routing state. It
+must not expose implementation details (FRR, GoBGP, Bird, JunOS, Linux VRFs,
+interfaces, routing tables). Implementations consume the API and realize intent
+using whatever runtime fits their environment.
 
-**Labels drive dispatch.** Controllers select providers, instances, and peers
-using `metav1.LabelSelector`. This makes topology configuration declarative and
-allows dynamic reassignment by changing labels.
+**Ownership model.** `BGPRouter` is the primary ownership boundary. Dependent
+resources associate via `routerRef` (single router) or `routerSelector`
+(multiple routers by label). Exactly one targeting mechanism must be set on
+any resource that supports both.
 
-**Per-provider status.** BGPInstance, BGPPeer, BGPAdvertisement, and
-BGPRoutePolicy each carry a `providers` list in their status. If a selector
-matches multiple providers (e.g., on a multi-plane node), each provider's
-reconciliation state is tracked independently.
-
-**Management cluster as source of truth.** BGPPeer and BGPExternalPeer live
-authoritatively in the management cluster. Karmada propagates BGPPeer resources
-to target clusters. The management cluster never runs BGP agents.
-
-**Agent lifecycle separation.** The BGPProvider auto-bootstrap at cosmos startup
-is separate from the reconciliation controllers. Providers are always present
-before any BGPInstance or BGPPeer reconciliation begins.
+**BGPAdvertisement is router-scoped.** Advertisements always target a single
+router via `routerRef`. Selector fan-out is intentionally not supported on
+advertisements to avoid ambiguous prefix attribution across multiple routers.
 
 ---
 
-## 5. Provider Ownership
-
-When a CNI plugin and cosmos both send calls to the same remote agent, the
-following ownership boundaries apply. Violating these boundaries will cause
-reconciliation conflicts or session disruption.
-
-| API surface | Owner |
-|---|---|
-| Speaker config (AS, router ID, address families) | Cosmos exclusively |
-| Peer add / update / delete | Cosmos exclusively |
-| Route policy add / update / delete | Cosmos exclusively |
-| VRF add / delete | CNI exclusively |
-| Path add / delete for tenant routes | CNI exclusively |
-| Read-only queries (peer list, path list) | Either |
-
-Cosmos does not manage VRF instances or tenant path injection. The CNI plugin
-manages VRF lifecycle independently of cosmos.
-
----
-
-## 6. Deletion Semantics
-
-All resources in both API groups carry the finalizer:
-
-```
-cosmos.bgp.miloapis.com/cleanup
-```
-
-The cleanup finalizer ensures that agent state is removed before the Kubernetes
-object is deleted. The reconciler removes agent state (peers, policies,
-advertisements), then removes the finalizer.
-
-A resource stuck in `Terminating` state means the cleanup finalizer has not been
-removed. This can happen when the controller is not running, the agent is
-unreachable, or a dependency check is blocking deletion.
-
-**To force-remove a stuck resource (destructive):**
+## 5. Common Verification Commands
 
 ```bash
-kubectl patch <kind>/<name> --type=merge -p '{"metadata":{"finalizers":[]}}'
-```
+# List all BGPRouters
+kubectl get bgprouters
 
-> **Warning:** Forcing finalizer removal bypasses agent cleanup. Any peers,
-> policies, or routes the resource managed will remain in the agent until the
-> next full reconciliation or agent restart. Use this only when the agent state
-> is already known to be gone (e.g., agent was rebuilt) or when you are
-> intentionally abandoning orphaned agent state.
-
-### Dependency-blocked deletion
-
-Some resources block deletion until their dependents are removed:
-
-- **BGPProvider**: deletion is blocked if any BGPInstance, BGPPeer,
-  BGPAdvertisement, or BGPRoutePolicy still selects this provider. Remove those
-  resources first.
-
-The `DeletionBlocked` condition is set on the resource to indicate which
-dependency is preventing deletion.
-
----
-
-## 7. Status Model
-
-Resources use one of two status layouts depending on their scope.
-
-### Per-provider status
-
-Resources that are reconciled against one or more agent instances carry a
-`providers` list in their status. Each entry has a `providerName` key and a
-`conditions` array for that provider. The entry also carries a `daemon` field
-(the agent type from `spec.type`) and an optional `resolvedConfig` field (the
-configuration actually applied).
-
-This applies to: **BGPInstance**, **BGPPeer**, **BGPAdvertisement**, **BGPRoutePolicy**.
-
-```yaml
-status:
-  providers:
-    - providerName: node-1-underlay
-      daemon: underlay
-      conditions:
-        - type: Ready
-          status: "True"
-          reason: Configured
-          message: "Speaker configured with AS 65000"
-          lastTransitionTime: "2024-01-01T00:00:00Z"
-    - providerName: node-2-underlay
-      daemon: underlay
-      conditions:
-        - type: Ready
-          status: "False"
-          reason: DaemonUnreachable
-          message: "gRPC dial to localhost:50051 failed"
-          lastTransitionTime: "2024-01-01T01:00:00Z"
-```
-
-If `providerRef` is used instead of `providerSelector`, the list will contain exactly one entry.
-
-### Flat status
-
-Resources that are not reconciled against an agent, or that represent single
-objects, carry a flat `conditions` array.
-
-This applies to: **BGPProvider**, **BGPExternalPeer**.
-
-```yaml
-status:
-  conditions:
-    - type: Ready
-      status: "True"
-      reason: DaemonResponsive
-      message: "Remote BGP agent is reachable"
-      lastTransitionTime: "2024-01-01T00:00:00Z"
-```
-
----
-
-## 8. Metrics
-
-Operational counters for BGP sessions are exposed as Prometheus metrics rather
-than CRD status fields. This avoids high-frequency status writes and eliminates
-multi-writer races in DaemonSet deployments.
-
-| Metric | Labels | Description |
-|--------|--------|-------------|
-| `bgp_advertised_prefixes_total` | `advertisement` | Prefixes advertised per BGPAdvertisement. |
-| `bgp_route_policies_applied` | `policy` | 1 if the policy is applied to the provider, 0 otherwise. |
-
-Metrics are scraped from each cosmos controller pod on `:8082/metrics`.
-
----
-
-## 9. Common Verification Commands
-
-```bash
-# List all providers and their ready status
-kubectl get bgpproviders
-
-# Check BGPInstance reconciliation status
-kubectl get bgpinstances -o wide
-
-# List all BGPPeers and their status
+# List all BGPPeers and their session state
 kubectl get bgppeers
 
-# Watch for BGPPeer condition changes
+# Watch BGPPeer state changes
 kubectl get bgppeers -w
 
-# Check whether a specific peer is established (per-provider status)
-kubectl get bgppeer <name> \
-  -o jsonpath='{.status.providers[?(@.providerName=="<provider-name>")].conditions[?(@.type=="SessionEstablished")].status}'
+# Describe a peer to see conditions
+kubectl describe bgppeer <name>
 
-# Force-remove a stuck finalizer (destructive — see deletion semantics)
-kubectl patch bgpinstance/underlay --type=merge -p '{"metadata":{"finalizers":[]}}'
+# List advertisements
+kubectl get bgpadvertisements
+
+# List route policies
+kubectl get bgproutepolicies
 ```

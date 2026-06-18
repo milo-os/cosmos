@@ -1,0 +1,51 @@
+---
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRouter
+metadata:
+  name: bgp-e2e-worker
+  namespace: default
+spec:
+  targetRef:
+    kind: Node
+    name: bgp-e2e-worker
+  roles:
+    - fabric
+  localASN: 65000
+  routerID: "10.0.0.1"
+  addressFamilies:
+    - afi: ipv6
+      safi: unicast
+---
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRouter
+metadata:
+  name: bgp-e2e-worker2
+  namespace: default
+spec:
+  targetRef:
+    kind: Node
+    name: bgp-e2e-worker2
+  roles:
+    - fabric
+  localASN: 65000
+  routerID: "10.0.0.2"
+  addressFamilies:
+    - afi: ipv6
+      safi: unicast
+---
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRouter
+metadata:
+  name: bgp-e2e-worker3
+  namespace: default
+spec:
+  targetRef:
+    kind: Node
+    name: bgp-e2e-worker3
+  roles:
+    - fabric
+  localASN: 65000
+  routerID: "10.0.0.3"
+  addressFamilies:
+    - afi: ipv6
+      safi: unicast
