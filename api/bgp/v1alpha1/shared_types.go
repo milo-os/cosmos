@@ -126,10 +126,6 @@ type ResolvedRouterConfig struct {
 	// +optional
 	RouterID string `json:"routerID,omitempty"`
 
-	// ListenPort is the port the BGP speaker was configured to listen on.
-	// +optional
-	ListenPort *int32 `json:"listenPort,omitempty"`
-
 	// ASNumber is the AS number configured.
 	// +optional
 	ASNumber *int64 `json:"asNumber,omitempty"`
@@ -137,38 +133,4 @@ type ResolvedRouterConfig struct {
 	// AddressFamilies configured.
 	// +optional
 	AddressFamilies []AddressFamily `json:"addressFamilies,omitempty"`
-
-	// Timers resolved (merged from router defaults and peer overrides).
-	// +optional
-	Timers *ResolvedTimers `json:"timers,omitempty"`
-
-	// Address is the peer address (BGPPeer only).
-	// +optional
-	Address string `json:"address,omitempty"`
-
-	// SessionType is iBGP or eBGP (BGPPeer only).
-	// +optional
-	SessionType string `json:"sessionType,omitempty"`
-
-	// AllowAsIn is the allowas-in count (BGPPeer only).
-	// +optional
-	AllowAsIn *int32 `json:"allowAsIn,omitempty"`
-
-	// Passive indicates passive mode (BGPPeer only).
-	// +optional
-	Passive *bool `json:"passive,omitempty"`
-
-	// PasswordConfigured indicates whether a BGP session password was applied.
-	// +optional
-	PasswordConfigured *bool `json:"passwordConfigured,omitempty"`
-
-	// ResolvedPrefixes is the list of prefixes injected (BGPAdvertisement only).
-	// +optional
-	ResolvedPrefixes []string `json:"resolvedPrefixes,omitempty"`
-}
-
-// ResolvedTimers holds effective BGP timer values after inheritance resolution.
-type ResolvedTimers struct {
-	HoldTime  int32 `json:"holdTime"`
-	Keepalive int32 `json:"keepalive"`
 }

@@ -192,7 +192,7 @@ documentation, see the [API reference](../api/README.md).
 | `bgpsessions` | `BGPSession` | `bgpsess` | Peering relationship between two endpoints |
 | `bgppeeringpolicies` | `BGPPeeringPolicy` | `bgppp` | Automates session creation through label selectors |
 | `bgpadvertisements` | `BGPAdvertisement` | `bgpadvert` | Prefix advertisement |
-| `bgproutepolicies` | `BGPRoutePolicy` | `bgprp` | Import/export filtering rules |
+| `bgppolicies` | `BGPPolicy` | `bgpp` | Import/export filtering rules |
 
 The following diagram shows how these resources relate to each other and to
 the GoBGP speaker:
@@ -255,7 +255,7 @@ manager. Each reconciler handles one CRD kind:
 | `SessionReconciler` | `BGPSession` | `AddPeer` / `UpdatePeer` / `DeletePeer` |
 | `PeeringPolicyReconciler` | `BGPPeeringPolicy` | Creates and deletes `BGPSession` CRDs (no direct GoBGP calls) |
 | `AdvertisementReconciler` | `BGPAdvertisement` | `AddPath` / `DeletePath` |
-| `RoutePolicyReconciler` | `BGPRoutePolicy` | `AddPolicy` / `DeletePolicy` |
+| `PolicyReconciler` | `BGPPolicy` | `AddPolicy` / `DeletePolicy` |
 
 The reconcilers are decoupled from each other. `PeeringPolicyReconciler`
 creates `BGPSession` resources as Kubernetes objects — it doesn't call GoBGP
@@ -293,7 +293,7 @@ It deletes sessions for endpoints that no longer match the selector.
 the local RIB. On GoBGP restart, `FullReconcile` bumps an annotation to
 trigger re-injection.
 
-**RoutePolicyReconciler** translates each `PolicyStatement` into a GoBGP
+**PolicyReconciler** translates each `PolicyStatement` into a GoBGP
 policy definition and installs import or export filters.
 
 ### GoBGP sidecar pattern
@@ -339,7 +339,7 @@ required.
 2. `AdvertisementReconciler` calls GoBGP's `AddPath` API to inject the
    prefixes into the local RIB.
 3. GoBGP advertises them to established peers according to routing policy.
-4. Optionally, a `BGPRoutePolicy` applies import/export filters per peer,
+4. Optionally, a `BGPPolicy` applies import/export filters per peer,
    using prefix matching with optional mask-length ranges.
 
 ### Route synchronization
@@ -403,7 +403,7 @@ it detects a failure, it:
   endpoints and rebuilding the GoBGP peer struct for each).
 - All `BGPAdvertisement` resources by bumping a reconcile-trigger annotation,
   which causes the reconciler to re-inject prefixes.
-- All `BGPRoutePolicy` resources the same way.
+- All `BGPPolicy` resources the same way.
 
 The `BGPConfiguration` is handled separately by the `ConfigReconciler` through
 its normal watch-based reconciliation.
@@ -526,7 +526,7 @@ and clusters. Cluster-scoped resources reflect the actual topology boundary.
 | Topology awareness | None (by design) | Node-centric | Node-centric | LoadBalancer-centric |
 | Session model | CRD (`BGPPeer`) | ConfigMap | `BGPPeer` CRD | `BGPPeer` CRD |
 | Advertisement model | `BGPAdvertisement` CRD | Auto from services | Auto from pods/services | Auto from services |
-| Route filtering | `BGPRoutePolicy` CRD | Policy CRD | `BGPFilter` CRD | Limited |
+| Route filtering | `BGPPolicy` CRD | Policy CRD | `BGPFilter` CRD | Limited |
 | Route-reflector support | `BGPPeeringPolicy` CRD | Yes | Yes | No |
 | Multi-cluster support | Through label selectors | Limited | Limited | No |
 | BGP daemon | [GoBGP][gobgp] (sidecar) | GoBGP (embedded) | [BIRD][bird] | [FRR][frr] |

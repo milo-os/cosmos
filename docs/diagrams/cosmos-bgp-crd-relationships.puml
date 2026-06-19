@@ -19,30 +19,23 @@ title Cosmos BGP CRDs — Component Relationships
 
 Boundary(pop_infra, "POP cluster + Infra cluster", "[system]") {
     System(router, "BGPRouter", "bgp.miloapis.com/v1alpha1\n\nBGP routing context — local AS,\nrouter ID, address families, roles.\nOne per plane per node.")
-    Container(peer, "BGPPeer", "bgp.miloapis.com/v1alpha1", "One side of a BGP session\non matched routers.\nPropagated via Karmada.")
+    System(peer, "BGPPeer", "bgp.miloapis.com/v1alpha1\n\nBGP session to a remote peer.\nrouterRef XOR routerSelector.")
     System(advert, "BGPAdvertisement", "bgp.miloapis.com/v1alpha1\n\nPrefix advertisement.\nLoopbacks, SRv6 locators,\nunderlay prefixes.")
-    System(routepolicy, "BGPRoutePolicy", "bgp.miloapis.com/v1alpha1\n\nImport / export route filtering.\nOrdered terms with sequence numbers.")
-}
-
-' ── Management cluster ────────────────────────────────────────────────────
-
-Boundary(mgmt, "Management cluster", "[system]") {
-    System_Ext(externalpeer, "BGPExternalPeer", "bgp.miloapis.com/v1alpha1\n\nExternal peer identity record.\nToR, transit provider, customer edge.\nRegistry only — never propagated.")
+    System(policy, "BGPPolicy", "bgp.miloapis.com/v1alpha1\n\nImport / export route filtering.\nOrdered terms with sequence numbers.")
 }
 
 ' ── Layout hints ──────────────────────────────────────────────────────────
 
 Lay_R(router, peer)
 Lay_D(router, advert)
-Lay_D(peer, routepolicy)
-Lay_R(advert, routepolicy)
-Lay_D(pop_infra, mgmt)
+Lay_D(peer, policy)
+Lay_R(advert, policy)
 
 ' ── Relationships ─────────────────────────────────────────────────────────
 
 Rel(peer, router, "routerRef /\nrouterSelector")
 Rel(advert, router, "routerRef")
-Rel(routepolicy, router, "routerRef /\nrouterSelector")
+Rel(policy, router, "routerRef /\nrouterSelector")
 
 SHOW_LEGEND()
 @enduml

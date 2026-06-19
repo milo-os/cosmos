@@ -53,14 +53,14 @@ spec:
       safi: unicast
 
 ---
-# INVALID: BGPRoutePolicy with set actions on a deny term — rejected by CEL validation
+# INVALID: BGPPolicy with set actions on a deny term — rejected by CEL validation
 #
 # Set actions (community manipulation, local preference) are only valid when
 # the term action is "permit". Setting them on a "deny" term violates:
 #   self.action == 'deny' ? !has(self.set) : true
 # The API server rejects the resource at admission time.
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: invalid-set-on-deny
   namespace: default
@@ -80,7 +80,7 @@ spec:
 # BLOCKED: Deletion of BGPRouter still referenced by BGPPeer — deletion blocked
 #
 # A BGPRouter cannot be deleted while any BGPPeer, BGPAdvertisement, or
-# BGPRoutePolicy in the same namespace references it via routerRef.
+# BGPPolicy in the same namespace references it via routerRef.
 # The cleanup finalizer checks for active dependents before removing itself.
 #
 # Resolution: delete or update all dependent resources first.

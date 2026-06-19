@@ -8,9 +8,7 @@ title BGP CRD Resource Relationships
 System(router, "BGPRouter", "Routing context:\nAS number, router ID,\naddress families, roles")
 System(peer, "BGPPeer", "BGP session:\nrouterRef / routerSelector,\naddress, peerASN")
 System(advert, "BGPAdvertisement", "Prefixes to advertise:\nrouterRef, addressFamily,\nprefixes, communities")
-System(rpolicy, "BGPRoutePolicy", "Import/export filters:\nrouterRef / routerSelector,\ndirection, ordered terms")
-System_Ext(externalpeer, "BGPExternalPeer", "External peer registry\n(management cluster)")
-
+System(rpolicy, "BGPPolicy", "Import/export filters:\nrouterRef / routerSelector,\ndirection, ordered terms")
 Rel_D(peer, router, "routerRef / routerSelector")
 Rel_D(advert, router, "routerRef")
 Rel_D(rpolicy, router, "routerRef / routerSelector")

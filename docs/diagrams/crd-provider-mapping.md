@@ -12,8 +12,7 @@ flowchart TD
         BGPRouter["BGPRouter\n─────────────────\nspec.targetRef.kind\nspec.targetRef.name\nspec.roles[]\nspec.localASN\nspec.routerID\nspec.addressFamilies[]"]
         BGPPeer["BGPPeer\n─────────────────\nspec.routerRef.name\nspec.routerSelector\nspec.address\nspec.peerASN\nspec.description\nspec.addressFamilies[]\nspec.holdTime\nspec.keepaliveTime\nspec.authSecretRef"]
         BGPAdvertisement["BGPAdvertisement\n─────────────────\nspec.routerRef.name\nspec.addressFamily\nspec.prefixes[]\nspec.communities[]\nspec.localPreference"]
-        BGPRoutePolicy["BGPRoutePolicy\n─────────────────\nspec.routerRef.name\nspec.routerSelector\nspec.direction\nspec.terms[].sequence\nspec.terms[].match\nspec.terms[].action\nspec.terms[].set"]
-        BGPExternalPeer["BGPExternalPeer\n─────────────────\nspec.address\nspec.asNumber\nspec.description\n(management cluster only)"]
+        BGPPolicy["BGPPolicy\n─────────────────\nspec.routerRef.name\nspec.routerSelector\nspec.direction\nspec.terms[].sequence\nspec.terms[].match\nspec.terms[].action\nspec.terms[].set"]
     end
 ```
 
@@ -22,10 +21,9 @@ flowchart TD
 ```
 BGPRouter            (primary ownership boundary — local AS, router ID, address families)
 ├── BGPPeer          (routerRef XOR routerSelector)
-├── BGPRoutePolicy   (routerRef XOR routerSelector; import or export direction)
+├── BGPPolicy   (routerRef XOR routerSelector; import or export direction)
 └── BGPAdvertisement (routerRef only; single-router scope)
 
-BGPExternalPeer      (management cluster registry — no controller)
 ```
 
 ## Address Family Matrix
@@ -47,13 +45,13 @@ Resources bind to routers via one of two mutually exclusive mechanisms:
 
 | Mechanism        | Field               | Scope       | Supported by                         |
 |------------------|---------------------|-------------|--------------------------------------|
-| Direct reference | `routerRef.name`    | Single router | BGPPeer, BGPRoutePolicy, BGPAdvertisement |
-| Label selector   | `routerSelector`    | Multiple routers | BGPPeer, BGPRoutePolicy             |
+| Direct reference | `routerRef.name`    | Single router | BGPPeer, BGPPolicy, BGPAdvertisement |
+| Label selector   | `routerSelector`    | Multiple routers | BGPPeer, BGPPolicy             |
 
 `BGPAdvertisement` supports `routerRef` only. Selector fan-out is intentionally
 not supported on advertisements to avoid ambiguous prefix attribution.
 
-## BGPRoutePolicy Term Structure
+## BGPPolicy Term Structure
 
 Each term in `spec.terms` is evaluated from lowest to highest `sequence` number.
 The first matching term wins.

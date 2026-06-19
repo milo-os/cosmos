@@ -16,7 +16,7 @@ const (
 // BGPRouter defines a logical BGP routing context. It abstracts a processing
 // instance bound to a specific execution context (e.g., a VRF or network
 // namespace) on a target node and acts as the primary ownership boundary for
-// BGPPeer, BGPAdvertisement, and BGPRoutePolicy resources.
+// BGPPeer, BGPAdvertisement, and BGPPolicy resources.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

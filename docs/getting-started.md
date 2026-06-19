@@ -16,11 +16,8 @@ By the end of this guide you will have:
 
 You need:
 
-- A Kubernetes cluster representing a POP node with IPv6 enabled
+- A Kubernetes cluster with IPv6 enabled
 - `kubectl` configured to reach the cluster
-- An infra cluster with a running route reflector (BGPRouter configured as a route reflector)
-- A management cluster with Karmada running, from which BGPPeer resources
-  are propagated
 
 ---
 
@@ -42,9 +39,8 @@ You should see:
 
 ```
 bgpadvertisements.bgp.miloapis.com
-bgpexternalpeers.bgp.miloapis.com
 bgppeers.bgp.miloapis.com
-bgproutepolicies.bgp.miloapis.com
+bgppolicies.bgp.miloapis.com
 bgprouters.bgp.miloapis.com
 bgpvrfinstances.bgp.miloapis.com
 vpcs.vpc.miloapis.com
@@ -125,15 +121,11 @@ kubectl apply -f overlay-router.yaml
 
 ---
 
-## Step 4: Create BGPPeer resources in the management cluster
-
-BGPPeer resources are written in the management cluster and propagated to
-POP/infra clusters via Karmada.
+## Step 4: Create BGPPeer resources
 
 ### Underlay peer (node to ToR)
 
 ```yaml
-# Propagated by Karmada to the POP cluster.
 apiVersion: bgp.miloapis.com/v1alpha1
 kind: BGPPeer
 metadata:
@@ -152,7 +144,6 @@ spec:
 ### Overlay peer (node to route reflector)
 
 ```yaml
-# Propagated by Karmada to the POP cluster.
 apiVersion: bgp.miloapis.com/v1alpha1
 kind: BGPPeer
 metadata:
@@ -171,20 +162,16 @@ spec:
   keepaliveTime: 30s
 ```
 
-Apply to the management cluster:
-
 ```bash
-kubectl --context management apply -f underlay-peer.yaml
-kubectl --context management apply -f overlay-peer.yaml
+kubectl apply -f underlay-peer.yaml
+kubectl apply -f overlay-peer.yaml
 ```
-
-Karmada propagates the BGPPeer resources to the POP cluster.
 
 ---
 
 ## Step 5: Verify BGPPeer resources
 
-After Karmada propagation, verify that BGPPeer resources exist on the POP cluster:
+Verify that BGPPeer resources exist:
 
 ```bash
 kubectl get bgppeers
@@ -212,7 +199,7 @@ establishing:
 ## Step 6: Advertise infrastructure prefixes (underlay only)
 
 For loopback addresses and SRv6 locator blocks, create a BGPAdvertisement
-on the POP cluster:
+on the cluster:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
@@ -246,11 +233,11 @@ kubectl get bgpadvertisement node-1-loopback
 
 ## Step 7: Apply route policy (optional)
 
-To control which routes are advertised to peers, create a BGPRoutePolicy:
+To control which routes are advertised to peers, create a BGPPolicy:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: node-1-underlay-export
   namespace: default
@@ -284,7 +271,6 @@ kubectl apply -f route-policy.yaml
 - Read the full [API reference](api/) for all CRDs, including field
   definitions and conditions.
 - Review the [example files](examples/) for complete annotated YAML:
-  - [BGPExternalPeer — ToR switch](examples/mgmt-bgpexternalpeer-tor.yaml)
   - [Rejected configurations](examples/rejected-configurations.yaml)
 
 <!-- References -->

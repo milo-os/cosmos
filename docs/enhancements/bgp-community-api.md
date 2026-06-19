@@ -10,7 +10,7 @@ stage: alpha
 > **Note:** This is an unimplemented proposal. The `BGPCommunity`,
 > `BGPCommunityAttachment`, and all `communityRefs`/`communitySelector`/`communityMatch`/`setCommunities`
 > fields described below do not exist in the current API and are subject to change.
-> The existing resources (`BGPRoutePolicy`, `BGPAdvertisement`) are shown using
+> The existing resources (`BGPPolicy`, `BGPAdvertisement`) are shown using
 > their current API shapes. `BGPPeeringPolicy` references below refer to a resource
 > that was never implemented and can be ignored.
 
@@ -25,7 +25,7 @@ stage: alpha
   - [`BGPCommunity`](#bgpcommunity)
   - [`BGPAdvertisement` extensions](#bgpadvertisement-extensions)
   - [`BGPCommunityAttachment`](#bgpcommunityattachment)
-  - [`BGPRoutePolicy` extensions](#bgproutepolicy-extensions)
+  - [`BGPPolicy` extensions](#bgppolicy-extensions)
   - [End-to-end example](#end-to-end-example)
 - [Design Details](#design-details)
   - [Typed community values](#typed-community-values)
@@ -47,7 +47,7 @@ This enhancement proposes a named, typed API for BGP communities in the
 `bgp.miloapis.com/v1alpha1` group. It introduces two new cluster-scoped
 kinds — `BGPCommunity` (a typed, named community value) and
 `BGPCommunityAttachment` (selector-driven tagging of advertisements owned by
-others) — and extends `BGPAdvertisement` and `BGPRoutePolicy` with
+others) — and extends `BGPAdvertisement` and `BGPPolicy` with
 community-aware references, selectors, match conditions, and a mutating
 `setCommunities` action.
 
@@ -63,7 +63,7 @@ raw-string `communities: ["AS:value"]` field (now removed) that was marked as a
 "Phase 2+ extensibility placeholder"
 The string list has no
 registry, no typing (standard vs. large vs. extended vs. well-known), and
-`BGPRoutePolicy` conditions cannot match on communities — only on prefix sets,
+`BGPPolicy` conditions cannot match on communities — only on prefix sets,
 community sets, and next-hop sets via `PolicyConditions.communitySet`.
 
 Consumers want to **classify** routes (internal vs. external, tenant scope,
@@ -90,7 +90,7 @@ the current API cannot express cleanly:
   extended, well-known.
 - A path to attach communities to rendered routes both inline (on
   `BGPAdvertisement`) and out-of-band (via `BGPCommunityAttachment`).
-- Community-aware match and mutate in `BGPRoutePolicy`.
+- Community-aware match and mutate in `BGPPolicy`.
 - Fit the repo's existing idioms: cluster scope, `metav1.LabelSelector`,
   name-based refs, storage version = alpha.
 
@@ -115,7 +115,7 @@ the current API cannot express cleanly:
 | `BGPCommunity` | Registers a named, typed community value. | Cluster |
 | `BGPCommunityAttachment` | Attaches communities to advertisements selected by label, without requiring write on the advertisement. | Cluster |
 | *(extend)* `BGPAdvertisement` | Adds `communityRefs` and `communitySelector`. | — |
-| *(extend)* `BGPRoutePolicy` | Adds community match on statements and a mutating `setCommunities` action. | — |
+| *(extend)* `BGPPolicy` | Adds community match on statements and a mutating `setCommunities` action. | — |
 
 All new kinds are cluster-scoped, consistent with existing BGP CRDs in
 this repo.
@@ -248,7 +248,7 @@ The `communities: []string` field has been removed from `BGPAdvertisementSpec` i
 
 `BGPCommunityAttachment` exists to tag advertisements a team does not own.
 It is deliberately additive: it can only *add* communities to rendered
-routes; it cannot remove them. Removal belongs in `BGPRoutePolicy`.
+routes; it cannot remove them. Removal belongs in `BGPPolicy`.
 
 **Mark all tenant-a advertisements as internally classified:**
 
@@ -283,7 +283,7 @@ spec:
       bgp.miloapis.com/class: internal
 ```
 
-### `BGPRoutePolicy` extensions
+### `BGPPolicy` extensions
 
 Two extensions to `PolicyStatement` (see `api/bgp/v1alpha1/routepolicy_types.go`):
 
@@ -296,7 +296,7 @@ Two extensions to `PolicyStatement` (see `api/bgp/v1alpha1/routepolicy_types.go`
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: border-no-leak
 spec:
@@ -325,7 +325,7 @@ to name a group without a set resource):**
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: border-reject-internal
 spec:
@@ -355,7 +355,7 @@ spec:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: ingress-tag-external
 spec:
@@ -378,7 +378,7 @@ spec:
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: border-strip-markers
 spec:
@@ -450,7 +450,7 @@ spec:
 ---
 # 4. Border enforces: no internal route leaks.
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: border-reject-internal
 spec:
@@ -502,10 +502,10 @@ Every resource that attaches or matches communities accepts both
 (`metav1.LabelSelector` over `BGPCommunity.metadata.labels`). Both may be
 set; the effective community set is their union. This mirrors the
 existing repo idiom — `BGPAdvertisement.peerSelector`,
-`BGPRoutePolicy.peerSelector` — and removes the need for a dedicated set
+`BGPPolicy.peerSelector` — and removes the need for a dedicated set
 resource.
 
-For `BGPRoutePolicy.communityMatch`, a `matchType` of `Any` or `All`
+For `BGPPolicy.communityMatch`, a `matchType` of `Any` or `All`
 controls whether a route must carry at least one or every resolved
 community to match.
 
@@ -529,7 +529,7 @@ this section is retained for historical context on the original design intent.
   to resolve `communityRefs`, `communitySelector`, and any
   `BGPCommunityAttachment` union into the community list it sends into
   the provider at render time.
-- `BGPRoutePolicy`: the policy reconciler resolves communities at the
+- `BGPPolicy`: the policy reconciler resolves communities at the
   same point it resolves `prefixSet` today, and translates
   `communityMatch` + `setCommunities` into the provider policy API.
 
@@ -543,7 +543,7 @@ this section is retained for historical context on the original design intent.
   `BGPCommunityAttachment`; `get/list` on `BGPAdvertisement` and
   `BGPCommunity`; no write on either.
 - **Policy owner** (border/edge team): `create/update` on
-  `BGPRoutePolicy`; `get/list` on `BGPCommunity`.
+  `BGPPolicy`; `get/list` on `BGPCommunity`.
 
 This split is the main operational reason `BGPCommunityAttachment`
 exists as a separate resource instead of being another field on
@@ -566,7 +566,7 @@ tenant team does not need to learn the community API; the network team
 does not need write access on the tenant's advertisements.
 
 **Border enforcement.** One cluster-wide
-`BGPRoutePolicy/border-reject-internal` on
+`BGPPolicy/border-reject-internal` on
 `bgp.miloapis.com/role=border` peers rejects any export carrying a
 `class=internal` community, preventing leakage even if a tenant
 accidentally attaches the community themselves or the classification
@@ -582,7 +582,7 @@ controller tags a new advertisement.
   status condition on the owning object (`AdvertisementReady=false`
   with reason `UnresolvedCommunityRef`) rather than silently dropping.
 - **Mutating policy action.** `setCommunities` is the first mutation in
-  `BGPRoutePolicy` — every statement before this proposal is purely
+  `BGPPolicy` — every statement before this proposal is purely
   filter-and-drop. That makes "what communities does route X actually
   carry at egress?" a rendered-at-reconcile question, not a static-read
   question. The answer lives in the session state, not the CRD.
@@ -607,7 +607,7 @@ surface on every advertisement.
 selectors over `BGPCommunity` objects cover the same use case — group
 by `matchLabels: {class: internal}` anywhere communities are accepted —
 and do so using the idiom already present throughout this repo
-(`BGPAdvertisement.peerSelector`, `BGPRoutePolicy.peerSelector`). A set resource would add a second grouping
+(`BGPAdvertisement.peerSelector`, `BGPPolicy.peerSelector`). A set resource would add a second grouping
 mechanism, a second reconciler, a second RBAC kind, a second
 dangling-ref failure mode, and composition questions (can a set
 reference another set?) without enabling anything a selector cannot
@@ -630,7 +630,7 @@ CRDs; label selectors cover the same ground declaratively.
 
 1. **Mutating policy action.** Is `setCommunities.add`/`.remove`
    desirable in v1, or should mutation be deferred to a follow-up to
-   keep `BGPRoutePolicy` filter-only? Leaning toward shipping it:
+   keep `BGPPolicy` filter-only? Leaning toward shipping it:
    stripping classification at the border is a concrete, already-named
    user story, and the provider interface supports it.
 2. **Extended communities in v1 vs. with `BGPVPN`.** Route-target
@@ -647,7 +647,7 @@ CRDs; label selectors cover the same ground declaratively.
 ## Prior Art
 
 - Existing codebase idioms: `BGPAdvertisement.peerSelector`,
-  `BGPRoutePolicy.peerSelector`, and the `prefixSets` field on
+  `BGPPolicy.peerSelector`, and the `prefixSets` field on
   `PolicyConditions` (`api/bgp/v1alpha1/routepolicy_types.go`).
 - RFC 1997 (standard communities), RFC 1998 (common
   well-known-community usage patterns), RFC 4360 (extended

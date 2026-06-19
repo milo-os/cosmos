@@ -6,15 +6,12 @@ vars:
   KIND_IMAGE: kindest/node:v1.34.0
   KUBECONFIG: "{{.TASKFILE_DIR}}/.kubeconfig"
   REPO_ROOT: "{{.TASKFILE_DIR}}/../.."
-  BGP_IMG: ghcr.io/milo-os/cosmos:e2e-local
 
 tasks:
   default:
-    desc: Run the full E2E suite (setup, build, deploy, test, teardown)
+    desc: Run the full E2E suite (setup, deploy, test, teardown)
     cmds:
       - task: cluster-create
-      - task: images-build
-      - task: images-load
       - task: deploy
       - task: test
       - task: cluster-delete
@@ -53,28 +50,11 @@ tasks:
       - kind delete cluster --name {{.CLUSTER_NAME}}
       - rm -f {{.KUBECONFIG}}
 
-  images-build:
-    desc: Build the bgp operator image
-    cmds:
-      - task: images-build-bgp
-
-  images-build-bgp:
-    desc: Build the bgp operator image
-    dir: "{{.REPO_ROOT}}"
-    cmds:
-      - docker build -t {{.BGP_IMG}} -f build/Dockerfile .
-
-  images-load:
-    desc: Load locally-built images into the kind cluster
-    cmds:
-      - kind load docker-image {{.BGP_IMG}} --name {{.CLUSTER_NAME}}
-
   deploy:
     desc: Deploy all BGP system components in order
     cmds:
       - task: deploy-cilium
       - task: deploy-crds
-      - task: deploy-bgp-operator
       - task: deploy-bgp-routers
 
   deploy-cilium:
@@ -104,19 +84,12 @@ tasks:
           --for=condition=Established
           crd/bgprouters.bgp.miloapis.com
           crd/bgpadvertisements.bgp.miloapis.com
-          crd/bgproutepolicies.bgp.miloapis.com
-          crd/bgpexternalpeers.bgp.miloapis.com
+          crd/bgppolicies.bgp.miloapis.com
           crd/bgppeers.bgp.miloapis.com
           crd/bgpvrfinstances.bgp.miloapis.com
           crd/vpcs.vpc.miloapis.com
           crd/vpcattachments.vpc.miloapis.com
           --timeout=60s
-
-  deploy-bgp-operator:
-    desc: Deploy the cosmos BGP operator DaemonSet
-    cmds:
-      - KUBECONFIG={{.KUBECONFIG}} kubectl apply -k {{.TASKFILE_DIR}}/overlay
-      - KUBECONFIG={{.KUBECONFIG}} kubectl -n bgp-system rollout status daemonset/cosmos --timeout=120s
 
   deploy-bgp-routers:
     desc: Apply BGPRouter manifests for each e2e worker node

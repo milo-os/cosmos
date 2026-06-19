@@ -4,16 +4,16 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgproutepolicies.bgp.miloapis.com
+  name: bgppolicies.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPRoutePolicy
-    listKind: BGPRoutePolicyList
-    plural: bgproutepolicies
+    kind: BGPPolicy
+    listKind: BGPPolicyList
+    plural: bgppolicies
     shortNames:
-    - bgprp
-    singular: bgproutepolicy
+    - bgpp
+    singular: bgppolicy
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -30,7 +30,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          BGPRoutePolicy defines composable, ordered routing policy statements applied to a
+          BGPPolicy defines composable, ordered routing policy statements applied to a
           BGPRouter in a specific direction (import or export). It binds to one or more
           BGPRouter instances via routerRef or routerSelector.
         properties:
@@ -52,7 +52,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPRoutePolicySpec defines the desired route policy state.
+            description: BGPPolicySpec defines the desired route policy state.
             properties:
               direction:
                 allOf:
@@ -124,7 +124,7 @@ spec:
                   Terms is the ordered list of policy statements.
                   Evaluated from lowest to highest sequence number.
                 items:
-                  description: BGPRoutePolicyTerm is a single ordered policy statement
+                  description: BGPPolicyTerm is a single ordered policy statement
                     with match conditions and an action.
                   properties:
                     action:
@@ -247,7 +247,7 @@ spec:
             - message: Exactly one of routerRef or routerSelector must be set
               rule: has(self.routerRef) != has(self.routerSelector)
           status:
-            description: BGPRoutePolicyStatus defines the observed state of BGPRoutePolicy.
+            description: BGPPolicyStatus defines the observed state of BGPPolicy.
             properties:
               conditions:
                 description: Conditions contains the standard conditions for this

@@ -4,7 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BGPPolicyDirection is the direction in which a BGPRoutePolicy is applied.
+// BGPPolicyDirection is the direction in which a BGPPolicy is applied.
 //
 // +kubebuilder:validation:Enum=import;export
 type BGPPolicyDirection string
@@ -30,28 +30,28 @@ const (
 	BGPPolicyActionDeny BGPPolicyAction = "deny"
 )
 
-// BGPRoutePolicy defines composable, ordered routing policy statements applied to a
+// BGPPolicy defines composable, ordered routing policy statements applied to a
 // BGPRouter in a specific direction (import or export). It binds to one or more
 // BGPRouter instances via routerRef or routerSelector.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=bgprp
+// +kubebuilder:resource:scope=Namespaced,shortName=bgpp
 // +kubebuilder:printcolumn:name="DIRECTION",type="string",JSONPath=".spec.direction"
 // +kubebuilder:printcolumn:name="TERMS",type="integer",JSONPath=".spec.terms"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
-type BGPRoutePolicy struct {
+type BGPPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BGPRoutePolicySpec   `json:"spec,omitempty"`
-	Status BGPRoutePolicyStatus `json:"status,omitempty"`
+	Spec   BGPPolicySpec   `json:"spec,omitempty"`
+	Status BGPPolicyStatus `json:"status,omitempty"`
 }
 
-// BGPRoutePolicySpec defines the desired route policy state.
+// BGPPolicySpec defines the desired route policy state.
 //
 // +kubebuilder:validation:XValidation:rule="self.terms.all(t1, self.terms.filter(t2, t2.sequence == t1.sequence).size() == 1)",message="Term sequence numbers must be unique"
-type BGPRoutePolicySpec struct {
+type BGPPolicySpec struct {
 	RouterTarget `json:",inline"`
 
 	// Direction is the policy direction: import or export.
@@ -63,13 +63,13 @@ type BGPRoutePolicySpec struct {
 	// Evaluated from lowest to highest sequence number.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=32
-	Terms []BGPRoutePolicyTerm `json:"terms"`
+	Terms []BGPPolicyTerm `json:"terms"`
 }
 
-// BGPRoutePolicyTerm is a single ordered policy statement with match conditions and an action.
+// BGPPolicyTerm is a single ordered policy statement with match conditions and an action.
 //
 // +kubebuilder:validation:XValidation:rule="self.action == 'deny' ? !has(self.set) : true",message="set actions are not permitted on deny terms"
-type BGPRoutePolicyTerm struct {
+type BGPPolicyTerm struct {
 	// Sequence is the evaluation order. Lower values are evaluated first.
 	// Must be unique within the policy.
 	// +kubebuilder:validation:Minimum=1
@@ -77,7 +77,7 @@ type BGPRoutePolicyTerm struct {
 	Sequence int32 `json:"sequence"`
 
 	// Match defines the conditions under which this term fires.
-	Match BGPRoutePolicyMatch `json:"match"`
+	Match BGPPolicyMatch `json:"match"`
 
 	// Action is the disposition when this term matches.
 	// +kubebuilder:validation:Enum=permit;deny
@@ -89,8 +89,8 @@ type BGPRoutePolicyTerm struct {
 	Set *PolicySetActions `json:"set,omitempty"`
 }
 
-// BGPRoutePolicyMatch defines the conditions under which a policy term fires.
-type BGPRoutePolicyMatch struct {
+// BGPPolicyMatch defines the conditions under which a policy term fires.
+type BGPPolicyMatch struct {
 	// Any matches all routes. When true, all other match fields are ignored.
 	// +optional
 	Any bool `json:"any,omitempty"`
@@ -131,8 +131,8 @@ type CommunitySet struct {
 	Remove []string `json:"remove,omitempty"`
 }
 
-// BGPRoutePolicyStatus defines the observed state of BGPRoutePolicy.
-type BGPRoutePolicyStatus struct {
+// BGPPolicyStatus defines the observed state of BGPPolicy.
+type BGPPolicyStatus struct {
 	// ObservedGeneration is the .metadata.generation this status was computed from.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
@@ -146,12 +146,12 @@ type BGPRoutePolicyStatus struct {
 }
 
 // +kubebuilder:object:root=true
-type BGPRoutePolicyList struct {
+type BGPPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []BGPRoutePolicy `json:"items"`
+	Items           []BGPPolicy `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&BGPRoutePolicy{}, &BGPRoutePolicyList{})
+	SchemeBuilder.Register(&BGPPolicy{}, &BGPPolicyList{})
 }

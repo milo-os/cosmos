@@ -24,7 +24,7 @@ The fleet uses two BGP planes per node:
 | **Overlay** | L2VPN EVPN distribution for tenant workloads |
 
 Each plane is represented by a separate `BGPRouter` resource. `BGPPeer`,
-`BGPAdvertisement`, and `BGPRoutePolicy` resources target a router by direct
+`BGPAdvertisement`, and `BGPPolicy` resources target a router by direct
 reference (`routerRef`) or label selector (`routerSelector`).
 
 ### API Group
@@ -44,8 +44,7 @@ All resources are **Namespaced**.
 | [BGPRouter](#bgprouter) | `bgpr` | — |
 | [BGPPeer](#bgppeer) | `bgppr` | `routerRef` XOR `routerSelector` |
 | [BGPAdvertisement](#bgpadvertisement) | `bgpadv` | `routerRef` only |
-| [BGPRoutePolicy](#bgproutepolicy) | `bgprp` | `routerRef` XOR `routerSelector` |
-| [BGPExternalPeer](#bgpexternalpeer) | `bgpep` | — |
+| [BGPPolicy](#bgppolicy) | `bgpp` | `routerRef` XOR `routerSelector` |
 
 ---
 
@@ -92,7 +91,7 @@ routerSelector:
 `BGPRouter` defines a logical BGP routing context. It identifies the execution
 target, local AS number, router ID, functional roles, and address families. It
 is the primary ownership boundary for `BGPPeer`, `BGPAdvertisement`, and
-`BGPRoutePolicy` resources.
+`BGPPolicy` resources.
 
 #### Spec
 
@@ -299,9 +298,9 @@ spec:
 
 ---
 
-### BGPRoutePolicy
+### BGPPolicy
 
-`BGPRoutePolicy` defines composable, ordered routing policy statements applied
+`BGPPolicy` defines composable, ordered routing policy statements applied
 to a BGPRouter in a specific direction (import or export). It binds to one or
 more `BGPRouter` instances via `routerRef` or `routerSelector`.
 
@@ -312,18 +311,18 @@ more `BGPRouter` instances via `routerRef` or `routerSelector`.
 | `routerRef` | `RouterRef` | Conditional | Direct reference to a single BGPRouter. Mutually exclusive with `routerSelector`. |
 | `routerSelector` | `RouterSelector` | Conditional | Label selector for BGPRouter resources. Mutually exclusive with `routerRef`. |
 | `direction` | `string` | Yes | Policy direction. Enum: `import`, `export`. |
-| `terms` | `[]BGPRoutePolicyTerm` | Yes | Ordered list of policy statements. Minimum 1. Evaluated ascending by `sequence`. |
+| `terms` | `[]BGPPolicyTerm` | Yes | Ordered list of policy statements. Minimum 1. Evaluated ascending by `sequence`. |
 
-**BGPRoutePolicyTerm**
+**BGPPolicyTerm**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `sequence` | `int32` | Yes | Evaluation order. Range: 1–65535. Must be unique within the policy. |
-| `match` | `BGPRoutePolicyMatch` | Yes | Conditions under which this term fires. |
+| `match` | `BGPPolicyMatch` | Yes | Conditions under which this term fires. |
 | `action` | `string` | Yes | Disposition on match. Enum: `permit`, `deny`. |
 | `set` | `PolicySetActions` | No | Mutations applied on `permit`. Must not be set on `deny` terms. |
 
-**BGPRoutePolicyMatch**
+**BGPPolicyMatch**
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -356,7 +355,7 @@ more `BGPRouter` instances via `routerRef` or `routerSelector`.
 | `observedGeneration` | `int64` | Last spec generation reflected in this status. |
 | `conditions` | `[]metav1.Condition` | Top-level conditions. |
 
-**BGPRoutePolicy Conditions**
+**BGPPolicy Conditions**
 
 | Type | Required | Meaning when True |
 |------|----------|-------------------|
@@ -369,7 +368,7 @@ more `BGPRouter` instances via `routerRef` or `routerSelector`.
 ```yaml
 # Export policy — tag fabric routes and deny everything else
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: fabric-export-policy
   namespace: default
@@ -399,7 +398,7 @@ spec:
 ```yaml
 # Import policy — accept EVPN routes and tag them
 apiVersion: bgp.miloapis.com/v1alpha1
-kind: BGPRoutePolicy
+kind: BGPPolicy
 metadata:
   name: evpn-import-filter
   namespace: default
@@ -423,32 +422,6 @@ spec:
         any: true
       action: deny
 ```
-
----
-
-### BGPExternalPeer
-
-`BGPExternalPeer` is the registry of BGP peers that exist outside the cosmos
-fleet: top-of-rack switches, upstream transit routers, and other external
-devices. Resources live in the management cluster only and are cluster-scoped.
-
-#### Spec
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `address` | `string` | Yes | IPv6 address of the external peer. |
-| `asNumber` | `int64` | Yes | AS number of the external peer. Range: 1–4294967295. |
-| `description` | `string` | No | Human-readable description. Maximum 256 characters. |
-
-#### Status
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `conditions` | `[]metav1.Condition` | Conditions for this external peer object. |
-
-#### Example
-
-See [`mgmt-bgpexternalpeer-tor.yaml`](../examples/mgmt-bgpexternalpeer-tor.yaml).
 
 ---
 
@@ -489,5 +462,5 @@ kubectl describe bgppeer <name>
 kubectl get bgpadvertisements
 
 # List route policies
-kubectl get bgproutepolicies
+kubectl get bgppolicies
 ```

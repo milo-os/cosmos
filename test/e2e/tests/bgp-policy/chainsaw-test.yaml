@@ -1,10 +1,10 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: bgp-route-policy
+  name: bgp-policy
 spec:
   description: >
-    Verify that BGPRoutePolicy resources are accepted by the API server with valid
+    Verify that BGPPolicy resources are accepted by the API server with valid
     conditions. Creates a policy with an export direction and ordered terms, then
     asserts the resource is stored and no error conditions are present.
   steps:
@@ -12,7 +12,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl delete bgproutepolicy e2e-export-filter 2>/dev/null || true
+              kubectl delete bgppolicy e2e-export-filter 2>/dev/null || true
               echo "OK: stale resources cleaned up"
 
     - name: create-export-route-policy
@@ -20,7 +20,7 @@ spec:
         - apply:
             resource:
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPRoutePolicy
+              kind: BGPPolicy
               metadata:
                 name: e2e-export-filter
               spec:
@@ -48,7 +48,7 @@ spec:
         - assert:
             resource:
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPRoutePolicy
+              kind: BGPPolicy
               metadata:
                 name: e2e-export-filter
               (metadata.name): e2e-export-filter
@@ -59,18 +59,18 @@ spec:
             content: |
               set -e
               # Check top-level conditions for error reasons.
-              REASONS=$(kubectl get bgproutepolicy e2e-export-filter \
+              REASONS=$(kubectl get bgppolicy e2e-export-filter \
                 -o jsonpath='{range .status.conditions[*]}{.reason}{"\n"}{end}' 2>/dev/null || echo "")
               if echo "$REASONS" | grep -qi "failed\|invalid\|error"; then
-                echo "ERROR: unexpected error condition on BGPRoutePolicy"
-                kubectl get bgproutepolicy e2e-export-filter -o yaml
+                echo "ERROR: unexpected error condition on BGPPolicy"
+                kubectl get bgppolicy e2e-export-filter -o yaml
                 exit 1
               fi
-              echo "OK: no error conditions on BGPRoutePolicy"
+              echo "OK: no error conditions on BGPPolicy"
 
       finally:
         - delete:
             ref:
               apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPRoutePolicy
+              kind: BGPPolicy
               name: e2e-export-filter
