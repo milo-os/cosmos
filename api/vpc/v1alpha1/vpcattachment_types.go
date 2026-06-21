@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -27,14 +26,23 @@ const VPCAttachmentAnnotation = "k8s.v1alpha1.vpc.miloapis.com/vpc-attachment"
 type VPCAttachmentSpec struct {
 	// VPC this attachment belongs to.
 	// +required
-	VPC corev1.ObjectReference `json:"vpc"`
+	VPC VPCRef `json:"vpc"`
 
 	// Interface defines the network interface configuration.
 	// +required
 	Interface VPCAttachmentInterface `json:"interface"`
 }
 
+// VPCRef references a VPC by name within the same namespace.
+type VPCRef struct {
+	// Name is the name of the VPC.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
 // VPCAttachmentInterface defines the network interface details.
+//
+// +kubebuilder:validation:XValidation:rule="self.addresses.all(a, isCIDR(a))",message="each address must be a valid IPv4 or IPv6 CIDR"
 type VPCAttachmentInterface struct {
 	// Name of the interface (e.g., eth0).
 	// +required
@@ -43,6 +51,7 @@ type VPCAttachmentInterface struct {
 
 	// A list of IPv4 or IPv6 addresses associated with the interface.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
 	// +required
 	Addresses []string `json:"addresses"`
 }
@@ -61,7 +70,6 @@ type VPCAttachmentStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // VPCAttachment is the Schema for the vpcattachments API
 type VPCAttachment struct {

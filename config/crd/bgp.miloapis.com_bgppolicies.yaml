@@ -185,6 +185,10 @@ spec:
                             match fields are ignored.
                           type: boolean
                       type: object
+                      x-kubernetes-validations:
+                      - message: addressFamilies must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.addressFamilies)
+                          || self.addressFamilies.size() == 0'
                     sequence:
                       description: |-
                         Sequence is the evaluation order. Lower values are evaluated first.

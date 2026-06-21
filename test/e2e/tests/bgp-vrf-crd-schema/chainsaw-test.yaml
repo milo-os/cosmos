@@ -19,7 +19,8 @@ spec:
               metadata:
                 name: e2e-valid-vrf
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -48,7 +49,7 @@ spec:
               ERT=$(kubectl get bgpvrf e2e-valid-vrf -n "$NAMESPACE" \
                 -o jsonpath='{.spec.exportRouteTargets[0].value}')
               ROUTER=$(kubectl get bgpvrf e2e-valid-vrf -n "$NAMESPACE" \
-                -o jsonpath='{.spec.routerRef}')
+                -o jsonpath='{.spec.routerRef.name}')
               if [ "$RD" != "65000:100" ]; then
                 echo "ERROR: routeDistinguisher = $RD, want 65000:100"
                 exit 1
@@ -62,10 +63,10 @@ spec:
                 exit 1
               fi
               if [ "$ROUTER" != "bgp-e2e-worker" ]; then
-                echo "ERROR: routerRef = $ROUTER, want bgp-e2e-worker"
+                echo "ERROR: routerRef.name = $ROUTER, want bgp-e2e-worker"
                 exit 1
               fi
-              echo "OK: all fields stored correctly (RD=$RD IRT=$IRT ERT=$ERT routerRef=$ROUTER)"
+              echo "OK: all fields stored correctly (RD=$RD IRT=$IRT ERT=$ERT routerRef.name=$ROUTER)"
 
     - name: vrf-ip-format-rd
       try:
@@ -78,7 +79,8 @@ spec:
               metadata:
                 name: e2e-vrf-ip-rd
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 routeDistinguisher: "192.0.2.1:100"
                 importRouteTargets:
                   - value: "192.0.2.1:100"
@@ -99,7 +101,8 @@ spec:
               metadata:
                 name: e2e-vrf-multi-rt
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 routeDistinguisher: "65000:200"
                 importRouteTargets:
                   - value: "65000:200"
@@ -130,7 +133,8 @@ spec:
               metadata:
                 name: e2e-vrf-bad-rd
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 routeDistinguisher: "not-valid"
                 importRouteTargets:
                   - value: "65000:100"
@@ -159,7 +163,8 @@ spec:
               metadata:
                 name: e2e-vrf-bad-rt
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "bad-rt"
@@ -188,7 +193,8 @@ spec:
               metadata:
                 name: e2e-vrf-empty-irt
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets: []
                 exportRouteTargets:
@@ -216,7 +222,8 @@ spec:
               metadata:
                 name: e2e-vrf-empty-ert
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 routeDistinguisher: "65000:100"
                 importRouteTargets:
                   - value: "65000:100"
@@ -272,7 +279,8 @@ spec:
               metadata:
                 name: e2e-vrf-no-rd
               spec:
-                routerRef: bgp-e2e-worker
+                routerRef:
+                  name: bgp-e2e-worker
                 importRouteTargets:
                   - value: "65000:100"
                 exportRouteTargets:

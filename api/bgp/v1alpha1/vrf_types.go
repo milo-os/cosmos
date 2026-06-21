@@ -22,21 +22,9 @@ type BGPVRFInstance struct {
 
 // BGPVRFInstanceSpec defines the desired VRF configuration.
 //
-// +kubebuilder:validation:XValidation:rule="has(self.routerRef) != has(self.routerSelector)",message="exactly one of routerRef or routerSelector must be set"
-// +kubebuilder:validation:XValidation:rule="self.routeDistinguisher.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')",message="routeDistinguisher must be in ASN:NN or IP:NN format"
+// +kubebuilder:validation:XValidation:rule="self.routeDistinguisher.matches('^([0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}|[0-9]{1,9}):[0-9]{1,9}$')",message="routeDistinguisher must be in ASN:NN or IP:NN format"
 type BGPVRFInstanceSpec struct {
-	// RouterRef is the name of the BGPRouter in the same namespace.
-	// The referenced router must have l2vpn-evpn in its addressFamilies.
-	// Mutually exclusive with routerSelector.
-	//
-	// +optional
-	RouterRef string `json:"routerRef,omitempty"`
-
-	// RouterSelector selects multiple BGPRouter resources in the same namespace.
-	// Mutually exclusive with routerRef.
-	//
-	// +optional
-	RouterSelector *metav1.LabelSelector `json:"routerSelector,omitempty"`
+	RouterTarget `json:",inline"`
 
 	// RouteDistinguisher uniquely identifies this VRF in the BGP control plane.
 	// Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
@@ -62,7 +50,7 @@ type BGPVRFInstanceSpec struct {
 
 // RouteTarget is a BGP extended community in "ASN:NN" or "IP:NN" format.
 //
-// +kubebuilder:validation:XValidation:rule="self.value.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')",message="value must be in ASN:NN or IP:NN format"
+// +kubebuilder:validation:XValidation:rule="self.value.matches('^([0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}|[0-9]{1,9}):[0-9]{1,9}$')",message="value must be in ASN:NN or IP:NN format"
 type RouteTarget struct {
 	// Value is the route target extended community string.
 	// Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").

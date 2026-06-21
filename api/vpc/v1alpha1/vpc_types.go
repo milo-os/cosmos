@@ -20,11 +20,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// VPCSpec defines the desired state of a VPC
+// VPCSpec defines the desired state of a VPC.
+//
+// +kubebuilder:validation:XValidation:rule="self.networks.all(n, isCIDR(n))",message="each network must be a valid IPv4 or IPv6 CIDR"
 type VPCSpec struct {
 	// A list of networks in IPv4 or IPv6 CIDR notation associated with the VPC
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:Items=string
+	// +kubebuilder:validation:MaxItems=64
 	Networks []string `json:"networks"`
 }
 

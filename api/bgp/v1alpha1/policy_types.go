@@ -90,6 +90,8 @@ type BGPPolicyTerm struct {
 }
 
 // BGPPolicyMatch defines the conditions under which a policy term fires.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.addressFamilies) || self.addressFamilies.size() == 0",message="addressFamilies must be empty when any is true"
 type BGPPolicyMatch struct {
 	// Any matches all routes. When true, all other match fields are ignored.
 	// +optional

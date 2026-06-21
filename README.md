@@ -87,12 +87,11 @@ metadata:
 spec:
   vpc:
     name: tenant-a
-    namespace: default
   interface:
     name: eth0
     addresses:
-      - "10.100.0.5/24"
-      - "fd00:a::5/48"
+      - "10.100.0.5"
+      - "fd00:a::5"
 ```
 
 ---
@@ -106,6 +105,12 @@ kubectl apply -k config/crd
 ```
 
 For a complete walkthrough, see the [Getting Started guide](docs/getting-started.md).
+
+---
+
+## Requirements
+
+- Kubernetes 1.28+ — CEL validation functions `isIP()` and `isCIDR()` used by this API are only available from Kubernetes 1.28 onwards.
 
 ---
 

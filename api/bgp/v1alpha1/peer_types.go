@@ -47,6 +47,7 @@ type BGPPeerSpec struct {
 
 	// Address is the remote peer's IPv4 or IPv6 address.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:XValidation:rule="isIP(self)",message="address must be a valid IPv4 or IPv6 address"
 	Address string `json:"address"`
 
@@ -66,6 +67,7 @@ type BGPPeerSpec struct {
 	// HoldTime is the BGP hold timer. Must be 0 (disabled) or >= 3s.
 	// Defaults to 90s if unset.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="duration(self) == duration('0s') || duration(self) >= duration('3s')",message="holdTime must be 0 or >= 3s"
 	HoldTime *metav1.Duration `json:"holdTime,omitempty"`
 
 	// KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.

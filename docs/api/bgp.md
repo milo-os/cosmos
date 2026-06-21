@@ -443,7 +443,19 @@ advertisements to avoid ambiguous prefix attribution across multiple routers.
 
 ---
 
-## 5. Common Verification Commands
+## 5. Known Limitations
+
+### `uint32` fields rendered as `format: int32` in CRD schema
+
+Fields typed as `uint32` in Go (e.g., `localASN`, `peerASN`, `localPreference`) are
+rendered by controller-gen as `format: int32` in the OpenAPI schema due to a known
+kubebuilder limitation. The real guardrails are the explicit `minimum` and `maximum`
+constraints on each field — those are set correctly. The `format: int32` annotation
+is advisory metadata only and does not restrict admission.
+
+---
+
+## 6. Common Verification Commands
 
 ```bash
 # List all BGPRouters

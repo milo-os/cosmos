@@ -43,12 +43,17 @@ spec:
                 description: A list of networks in IPv4 or IPv6 CIDR notation associated
                   with the VPC
                 items:
+                  maxLength: 64
                   type: string
+                maxItems: 64
                 minItems: 1
                 type: array
             required:
             - networks
             type: object
+            x-kubernetes-validations:
+            - message: each network must be a valid IPv4 or IPv6 CIDR
+              rule: self.networks.all(n, isCIDR(n))
           status:
             description: status defines the observed state of a VPC
             properties:

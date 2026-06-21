@@ -61,6 +61,7 @@ spec:
             properties:
               address:
                 description: Address is the remote peer's IPv4 or IPv6 address.
+                minLength: 1
                 type: string
                 x-kubernetes-validations:
                 - message: address must be a valid IPv4 or IPv6 address
@@ -120,6 +121,9 @@ spec:
                   HoldTime is the BGP hold timer. Must be 0 (disabled) or >= 3s.
                   Defaults to 90s if unset.
                 type: string
+                x-kubernetes-validations:
+                - message: holdTime must be 0 or >= 3s
+                  rule: 'duration(self) == duration(''0s'') || duration(self) >= duration(''3s'')'
               keepaliveTime:
                 description: |-
                   KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.

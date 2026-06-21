@@ -70,7 +70,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: value must be in ASN:NN or IP:NN format
-                    rule: self.value.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')
+                    rule: self.value.matches('^([0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}|[0-9]{1,9}):[0-9]{1,9}$')
                 maxItems: 32
                 minItems: 1
                 type: array
@@ -94,7 +94,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: value must be in ASN:NN or IP:NN format
-                    rule: self.value.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')
+                    rule: self.value.matches('^([0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}|[0-9]{1,9}):[0-9]{1,9}$')
                 maxItems: 32
                 minItems: 1
                 type: array
@@ -107,18 +107,23 @@ spec:
                 type: string
               routerRef:
                 description: |-
-                  RouterRef is the name of the BGPRouter in the same namespace.
-                  The referenced router must have l2vpn-evpn in its addressFamilies.
+                  RouterRef targets a single BGPRouter by name.
                   Mutually exclusive with routerSelector.
-                type: string
+                properties:
+                  name:
+                    description: Name is the name of the BGPRouter.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
               routerSelector:
                 description: |-
-                  RouterSelector selects multiple BGPRouter resources in the same namespace.
+                  RouterSelector targets one or more BGPRouters by label.
                   Mutually exclusive with routerRef.
                 properties:
                   matchExpressions:
-                    description: matchExpressions is a list of label selector requirements.
-                      The requirements are ANDed.
+                    description: MatchExpressions is a list of label selector requirements.
                     items:
                       description: |-
                         A label selector requirement is a selector that contains values, a key, and an operator that
@@ -148,27 +153,23 @@ spec:
                       - operator
                       type: object
                     type: array
-                    x-kubernetes-list-type: atomic
                   matchLabels:
                     additionalProperties:
                       type: string
-                    description: |-
-                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                      map is equivalent to an element of matchExpressions, whose key field is "key", the
-                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    description: MatchLabels is a map of key/value label pairs to
+                      match.
                     type: object
                 type: object
-                x-kubernetes-map-type: atomic
             required:
             - exportRouteTargets
             - importRouteTargets
             - routeDistinguisher
             type: object
             x-kubernetes-validations:
-            - message: exactly one of routerRef or routerSelector must be set
-              rule: has(self.routerRef) != has(self.routerSelector)
             - message: routeDistinguisher must be in ASN:NN or IP:NN format
-              rule: self.routeDistinguisher.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')
+              rule: self.routeDistinguisher.matches('^([0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}|[0-9]{1,9}):[0-9]{1,9}$')
+            - message: Exactly one of routerRef or routerSelector must be set
+              rule: has(self.routerRef) != has(self.routerSelector)
           status:
             description: BGPVRFInstanceStatus defines the observed state of BGPVRFInstance.
             properties:
@@ -303,9 +304,6 @@ spec:
                       description: ResolvedConfig holds the configuration that was
                         actually applied.
                       properties:
-                        address:
-                          description: Address is the peer address (BGPPeer only).
-                          type: string
                         addressFamilies:
                           description: AddressFamilies configured.
                           items:
@@ -342,53 +340,13 @@ spec:
                               rule: 'self.afi == ''l2vpn'' ? self.safi == ''evpn''
                                 : true'
                           type: array
-                        allowAsIn:
-                          description: AllowAsIn is the allowas-in count (BGPPeer
-                            only).
-                          format: int32
-                          type: integer
                         asNumber:
                           description: ASNumber is the AS number configured.
                           format: int64
                           type: integer
-                        listenPort:
-                          description: ListenPort is the port the BGP speaker was
-                            configured to listen on.
-                          format: int32
-                          type: integer
-                        passive:
-                          description: Passive indicates passive mode (BGPPeer only).
-                          type: boolean
-                        passwordConfigured:
-                          description: PasswordConfigured indicates whether a BGP
-                            session password was applied.
-                          type: boolean
-                        resolvedPrefixes:
-                          description: ResolvedPrefixes is the list of prefixes injected
-                            (BGPAdvertisement only).
-                          items:
-                            type: string
-                          type: array
                         routerID:
                           description: RouterID resolved for this router.
                           type: string
-                        sessionType:
-                          description: SessionType is iBGP or eBGP (BGPPeer only).
-                          type: string
-                        timers:
-                          description: Timers resolved (merged from router defaults
-                            and peer overrides).
-                          properties:
-                            holdTime:
-                              format: int32
-                              type: integer
-                            keepalive:
-                              format: int32
-                              type: integer
-                          required:
-                          - holdTime
-                          - keepalive
-                          type: object
                       type: object
                     routerName:
                       description: RouterName is the name of the BGPRouter this entry
