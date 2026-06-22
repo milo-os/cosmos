@@ -4,15 +4,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BGPAdvertisement injects infrastructure prefixes into the BGP RIB.
-// Used for node loopback /128 and SRv6 locator prefix advertisement.
-// Not used for per-workload or per-VRF routes — CNI owns those.
+// BGPAdvertisement defines routing information to advertise from a single BGPRouter.
+// Prefixes are specified inline. Fan-out via routerSelector is intentionally not
+// supported to avoid ambiguous prefix attribution across multiple routers.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=bgpadv
-// +kubebuilder:printcolumn:name="Instance",type="string",JSONPath=".spec.instanceRef"
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:resource:scope=Namespaced,shortName=bgpadv
+// +kubebuilder:printcolumn:name="ROUTER",type="string",JSONPath=".spec.routerRef.name"
+// +kubebuilder:printcolumn:name="ADDRESS-FAMILY",type="string",JSONPath=".spec.addressFamily.afi"
+// +kubebuilder:printcolumn:name="PREFIXES",type="integer",JSONPath=".status.advertisedPrefixes"
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 type BGPAdvertisement struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -23,37 +25,53 @@ type BGPAdvertisement struct {
 
 // BGPAdvertisementSpec defines the desired advertisement state.
 type BGPAdvertisementSpec struct {
-	// InstanceRef is the name of the BGPInstance to advertise through.
-	// Must reference a BGPInstance bound to providers with Unicast address families.
-	InstanceRef string `json:"instanceRef"`
+	// RouterRef targets a single BGPRouter by name.
+	// +kubebuilder:validation:Required
+	RouterRef RouterRef `json:"routerRef"`
 
-	// Prefixes is the list of IPv4 or IPv6 unicast CIDR blocks to advertise.
-	//
+	// AddressFamily defines the AFI/SAFI for this advertisement.
+	// +kubebuilder:validation:Required
+	AddressFamily AddressFamily `json:"addressFamily"`
+
+	// Prefixes is the list of CIDR prefixes to advertise.
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:XValidation:rule="self.all(p, isCIDR(p))",message="each prefix must be a valid IPv4 or IPv6 CIDR"
+	// +listType=set
 	Prefixes []string `json:"prefixes"`
 
-	// PeerSelector restricts advertisement to matched BGPPeer resources.
-	// If absent, advertise to all peers on matched providers.
-	//
+	// Communities is the list of BGP communities to attach to advertised prefixes.
+	// Format: ASN:NN or IP:NN.
 	// +optional
-	PeerSelector *metav1.LabelSelector `json:"peerSelector,omitempty"`
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="community must be in ASN:NN or IP:NN format"
+	Communities []string `json:"communities,omitempty"`
+
+	// LocalPreference sets the BGP LOCAL_PREF attribute on advertised prefixes.
+	// Only meaningful for iBGP sessions.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	LocalPreference *uint32 `json:"localPreference,omitempty"`
 }
 
 // BGPAdvertisementStatus defines the observed state of BGPAdvertisement.
 type BGPAdvertisementStatus struct {
-	// Conditions are top-level conditions for this BGPAdvertisement.
+	// ObservedGeneration is the .metadata.generation this status was computed from.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// AdvertisedPrefixes is the count of prefixes currently being originated.
+	// +optional
+	AdvertisedPrefixes int32 `json:"advertisedPrefixes,omitempty"`
+
+	// Conditions contains the standard conditions for this resource.
 	//
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// Providers holds per-provider reconciliation status.
-	//
-	// +listType=map
-	// +listMapKey=providerName
-	// +optional
-	Providers []ProviderStatus `json:"providers,omitempty"`
 }
 
 // +kubebuilder:object:root=true

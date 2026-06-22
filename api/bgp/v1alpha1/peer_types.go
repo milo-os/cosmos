@@ -4,14 +4,29 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BGPPeer configures one side of a BGP session on matched providers.
+// BGPPeerState represents the BGP Finite State Machine state of a session.
+type BGPPeerState string
+
+const (
+	BGPPeerStateIdle        BGPPeerState = "Idle"
+	BGPPeerStateConnect     BGPPeerState = "Connect"
+	BGPPeerStateActive      BGPPeerState = "Active"
+	BGPPeerStateOpenSent    BGPPeerState = "OpenSent"
+	BGPPeerStateOpenConfirm BGPPeerState = "OpenConfirm"
+	BGPPeerStateEstablished BGPPeerState = "Established"
+)
+
+// BGPPeer defines a BGP session to a remote peer. It binds to one or more
+// BGPRouter instances via routerRef or routerSelector.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=bgppr
-// +kubebuilder:printcolumn:name="Address",type="string",JSONPath=".spec.address"
-// +kubebuilder:printcolumn:name="AS",type="integer",JSONPath=".spec.asNumber"
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:resource:scope=Namespaced,shortName=bgppr
+// +kubebuilder:printcolumn:name="ROUTER",type="string",JSONPath=".spec.routerRef.name"
+// +kubebuilder:printcolumn:name="PEER-ADDRESS",type="string",JSONPath=".spec.address"
+// +kubebuilder:printcolumn:name="PEER-ASN",type="integer",JSONPath=".spec.peerASN"
+// +kubebuilder:printcolumn:name="STATE",type="string",JSONPath=".status.sessionState"
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 type BGPPeer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -21,138 +36,66 @@ type BGPPeer struct {
 }
 
 // BGPPeerSpec defines the desired state of BGPPeer.
-//
-// +kubebuilder:validation:XValidation:rule="has(self.providerRef) != has(self.providerSelector)",message="exactly one of providerRef or providerSelector must be set"
-// +kubebuilder:validation:XValidation:rule="!(has(self.ebgpMultihop) && has(self.ttlSecurity))",message="ebgpMultihop and ttlSecurity are mutually exclusive"
-// +kubebuilder:validation:XValidation:rule="!has(self.passwordSecretRef) || (has(self.passwordSecretRef.name) && has(self.passwordSecretRef.key))",message="passwordSecretRef requires both name and key"
 type BGPPeerSpec struct {
-	// InstanceRef is the name of the BGPInstance for this peer session.
-	InstanceRef string `json:"instanceRef"`
+	RouterTarget `json:",inline"`
 
-	// ProviderRef names a single BGPProvider.
-	// Use for topology-specific sessions (underlay eBGP, RR client designations).
-	// Mutually exclusive with providerSelector.
-	//
-	// +optional
-	ProviderRef string `json:"providerRef,omitempty"`
-
-	// ProviderSelector selects multiple BGPProvider resources.
-	// Use for cluster-wide sessions (e.g. all overlay providers peer with same RRs).
-	// Mutually exclusive with providerRef.
-	//
-	// +optional
-	ProviderSelector *metav1.LabelSelector `json:"providerSelector,omitempty"`
-
-	// Address is the peer's BGP address.
-	//
-	// +kubebuilder:validation:Format=ipv6
-	Address string `json:"address"`
-
-	// ASNumber is the peer's autonomous system number.
-	//
+	// PeerASN is the remote AS number.
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
-	ASNumber int64 `json:"asNumber"`
+	PeerASN uint32 `json:"peerASN"`
 
-	// AddressFamilies overrides the instance address families for this peer.
-	// If absent, inherited from the referenced BGPInstance.
-	//
+	// Address is the remote peer's IPv4 or IPv6 address.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="isIP(self)",message="address must be a valid IPv4 or IPv6 address"
+	Address string `json:"address"`
+
+	// Description is a human-readable label for this peer (e.g., "spine-1").
 	// +optional
-	AddressFamilies []AddressFamily `json:"addressFamilies,omitempty"`
+	Description string `json:"description,omitempty"`
 
-	// Timers overrides the instance timer defaults for this peer.
-	//
+	// AuthSecretRef references a Secret in the same namespace containing the
+	// MD5 TCP authentication password under the key "password".
 	// +optional
-	Timers *BGPPeerTimers `json:"timers,omitempty"`
+	AuthSecretRef *LocalSecretRef `json:"authSecretRef,omitempty"`
 
-	// AllowAsIn permits the peer's AS number to appear in received AS paths.
-	// Used on underlay eBGP sessions with a global AS.
-	//
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=10
+	// AddressFamilies defines the address families negotiated on this session.
+	// +kubebuilder:validation:MinItems=1
+	AddressFamilies []AddressFamily `json:"addressFamilies"`
+
+	// HoldTime is the BGP hold timer. Must be 0 (disabled) or >= 3s.
+	// Defaults to 90s if unset.
 	// +optional
-	AllowAsIn *int32 `json:"allowAsIn,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="duration(self) == duration('0s') || duration(self) >= duration('3s')",message="holdTime must be 0 or >= 3s"
+	HoldTime *metav1.Duration `json:"holdTime,omitempty"`
 
-	// RouteReflectorClient designates the remote peer as an RR client.
-	// Set on RR-side peers only. Never on client-side peers.
-	//
+	// KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.
+	// Defaults to 30s if unset.
 	// +optional
-	RouteReflectorClient bool `json:"routeReflectorClient,omitempty"`
-
-	// Passive enables passive mode — do not initiate the TCP connection.
-	//
-	// +optional
-	Passive bool `json:"passive,omitempty"`
-
-	// EBGPMultihop sets the eBGP multihop TTL.
-	// Mutually exclusive with ttlSecurity. Invalid on iBGP sessions.
-	//
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=255
-	// +optional
-	EBGPMultihop *int32 `json:"ebgpMultihop,omitempty"`
-
-	// TTLSecurity sets the TTL security hop count.
-	// Mutually exclusive with ebgpMultihop.
-	//
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=254
-	// +optional
-	TTLSecurity *int32 `json:"ttlSecurity,omitempty"`
-
-	// RemotePort is the TCP port to connect to on the remote peer.
-	// Defaults to 179 (standard BGP) when unset.
-	//
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
-	// +optional
-	RemotePort *int32 `json:"remotePort,omitempty"`
-
-	// PasswordSecretRef references a Secret containing the BGP session password.
-	//
-	// +optional
-	PasswordSecretRef *SecretKeyRef `json:"passwordSecretRef,omitempty"`
-}
-
-// BGPPeerTimers holds per-peer BGP timer overrides.
-type BGPPeerTimers struct {
-	// HoldTime overrides the instance default hold time.
-	//
-	// +kubebuilder:validation:Minimum=3
-	// +optional
-	HoldTime *int32 `json:"holdTime,omitempty"`
-
-	// Keepalive overrides the instance default keepalive interval.
-	//
-	// +kubebuilder:validation:Minimum=1
-	// +optional
-	Keepalive *int32 `json:"keepalive,omitempty"`
-}
-
-// SecretKeyRef references a key in a Kubernetes Secret.
-type SecretKeyRef struct {
-	// Name is the name of the Secret.
-	Name string `json:"name"`
-
-	// Key is the key within the Secret.
-	Key string `json:"key"`
+	KeepaliveTime *metav1.Duration `json:"keepaliveTime,omitempty"`
 }
 
 // BGPPeerStatus defines the observed state of BGPPeer.
 type BGPPeerStatus struct {
-	// Conditions are top-level conditions for this BGPPeer.
+	// ObservedGeneration is the .metadata.generation this status was computed from.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// SessionState is the current BGP FSM state of this session.
+	// +optional
+	SessionState BGPPeerState `json:"sessionState,omitempty"`
+
+	// LastEstablishedTime is the timestamp of the most recent Established transition.
+	// +optional
+	LastEstablishedTime *metav1.Time `json:"lastEstablishedTime,omitempty"`
+
+	// Conditions contains the standard conditions for this resource.
 	//
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// Providers holds per-provider reconciliation status.
-	//
-	// +listType=map
-	// +listMapKey=providerName
-	// +optional
-	Providers []ProviderStatus `json:"providers,omitempty"`
 }
 
 // +kubebuilder:object:root=true

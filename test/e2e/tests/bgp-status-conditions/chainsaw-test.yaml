@@ -4,10 +4,8 @@ metadata:
   name: bgp-status-conditions
 spec:
   description: >
-    Verify that top-level status.conditions are written on BGPPeer,
-    BGPAdvertisement, and BGPInstance when reconciliation cannot proceed.
-    Tests the set*Condition helpers introduced to give operators a
-    machine-readable reason when a resource is stuck before the provider loop.
+    Verify BGPPeer CRD schema validation — valid resources are accepted and
+    invalid resources are rejected by the API server without a running controller.
 
   steps:
     - name: cleanup-stale
@@ -15,21 +13,16 @@ spec:
         - script:
             content: |
               kubectl delete bgppeer \
-                e2e-cond-peer-no-instance \
-                e2e-cond-peer-no-provider \
-                2>/dev/null || true
-              kubectl delete bgpadvertisement \
-                e2e-cond-adv-no-instance \
-                2>/dev/null || true
-              kubectl delete bgpinstance \
-                e2e-cond-instance-no-provider \
+                e2e-cond-peer-valid \
+                e2e-cond-peer-bad-afi \
+                e2e-cond-peer-bad-safi \
                 2>/dev/null || true
               echo "OK: stale resources cleaned up"
 
-    - name: assert-peer-instance-not-found
+    - name: accept-valid-peer
       description: >
-        A BGPPeer referencing a non-existent BGPInstance should expose an
-        InstanceNotFound condition on status.conditions within the assert timeout.
+        A BGPPeer with a valid routerRef, valid address, and valid AFI/SAFI
+        should be accepted by the API server.
       try:
         - script:
             content: |
@@ -38,160 +31,85 @@ spec:
               apiVersion: bgp.miloapis.com/v1alpha1
               kind: BGPPeer
               metadata:
-                name: e2e-cond-peer-no-instance
+                name: e2e-cond-peer-valid
               spec:
-                instanceRef: instance-does-not-exist
-                providerRef: provider-does-not-exist
+                routerRef:
+                  name: router-does-not-exist
                 address: "2001:db8:e2e:c001::1"
-                asNumber: 65099
-              EOF
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              while [ "$ATTEMPTS" -lt 30 ]; do
-                STATUS=$(kubectl get bgppeer e2e-cond-peer-no-instance \
-                  -o jsonpath='{.status.conditions[?(@.type=="InstanceNotFound")].status}' \
-                  2>/dev/null || true)
-                if [ "$STATUS" = "True" ]; then
-                  echo "OK: InstanceNotFound condition present and True on BGPPeer"
-                  exit 0
-                fi
-                ATTEMPTS=$((ATTEMPTS+1))
-                sleep 2
-              done
-              echo "ERROR: InstanceNotFound condition not written to BGPPeer status"
-              kubectl get bgppeer e2e-cond-peer-no-instance -o yaml
-              exit 1
-
-    - name: assert-peer-provider-not-matched
-      description: >
-        A BGPPeer with a valid instanceRef but a providerRef that does not
-        exist should expose a ProviderNotMatched condition.
-      try:
-        - script:
-            content: |
-              set -e
-              kubectl apply -f - <<EOF
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPPeer
-              metadata:
-                name: e2e-cond-peer-no-provider
-              spec:
-                instanceRef: default
-                providerRef: provider-does-not-exist
-                address: "2001:db8:e2e:c002::1"
-                asNumber: 65099
-              EOF
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              while [ "$ATTEMPTS" -lt 30 ]; do
-                STATUS=$(kubectl get bgppeer e2e-cond-peer-no-provider \
-                  -o jsonpath='{.status.conditions[?(@.type=="ProviderNotMatched")].status}' \
-                  2>/dev/null || true)
-                if [ "$STATUS" = "True" ]; then
-                  echo "OK: ProviderNotMatched condition present and True on BGPPeer"
-                  exit 0
-                fi
-                ATTEMPTS=$((ATTEMPTS+1))
-                sleep 2
-              done
-              echo "ERROR: ProviderNotMatched condition not written to BGPPeer status"
-              kubectl get bgppeer e2e-cond-peer-no-provider -o yaml
-              exit 1
-
-    - name: assert-advertisement-instance-not-found
-      description: >
-        A BGPAdvertisement referencing a non-existent BGPInstance should expose
-        an InstanceNotFound condition on status.conditions.
-      try:
-        - script:
-            content: |
-              set -e
-              kubectl apply -f - <<EOF
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPAdvertisement
-              metadata:
-                name: e2e-cond-adv-no-instance
-              spec:
-                instanceRef: instance-does-not-exist
-                prefixes:
-                  - 2001:db8:e2e:c000::/64
-              EOF
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              while [ "$ATTEMPTS" -lt 30 ]; do
-                STATUS=$(kubectl get bgpadvertisement e2e-cond-adv-no-instance \
-                  -o jsonpath='{.status.conditions[?(@.type=="InstanceNotFound")].status}' \
-                  2>/dev/null || true)
-                if [ "$STATUS" = "True" ]; then
-                  echo "OK: InstanceNotFound condition present and True on BGPAdvertisement"
-                  exit 0
-                fi
-                ATTEMPTS=$((ATTEMPTS+1))
-                sleep 2
-              done
-              echo "ERROR: InstanceNotFound condition not written to BGPAdvertisement status"
-              kubectl get bgpadvertisement e2e-cond-adv-no-instance -o yaml
-              exit 1
-
-    - name: assert-instance-provider-not-matched
-      description: >
-        A BGPInstance whose providerSelector matches no BGPProvider resources
-        should expose a ProviderNotMatched condition on status.conditions.
-      try:
-        - script:
-            content: |
-              set -e
-              kubectl apply -f - <<EOF
-              apiVersion: bgp.miloapis.com/v1alpha1
-              kind: BGPInstance
-              metadata:
-                name: e2e-cond-instance-no-provider
-              spec:
-                providerSelector:
-                  matchLabels:
-                    bgp.miloapis.com/daemon: does-not-exist
-                asNumber: 65099
-                routerIDSource: Auto
+                peerASN: 65099
                 addressFamilies:
-                  - afi: IPv6
-                    safi: Unicast
+                  - afi: ipv6
+                    safi: unicast
               EOF
-        - script:
-            content: |
-              set -e
-              ATTEMPTS=0
-              while [ "$ATTEMPTS" -lt 30 ]; do
-                STATUS=$(kubectl get bgpinstance e2e-cond-instance-no-provider \
-                  -o jsonpath='{.status.conditions[?(@.type=="ProviderNotMatched")].status}' \
-                  2>/dev/null || true)
-                if [ "$STATUS" = "True" ]; then
-                  echo "OK: ProviderNotMatched condition present and True on BGPInstance"
-                  exit 0
-                fi
-                ATTEMPTS=$((ATTEMPTS+1))
-                sleep 2
-              done
-              echo "ERROR: ProviderNotMatched condition not written to BGPInstance status"
-              kubectl get bgpinstance e2e-cond-instance-no-provider -o yaml
-              exit 1
+              kubectl get bgppeer e2e-cond-peer-valid
+              echo "OK: valid BGPPeer accepted by API server"
 
       finally:
         - script:
             content: |
-              kubectl delete bgppeer \
-                e2e-cond-peer-no-instance \
-                e2e-cond-peer-no-provider \
-                2>/dev/null || true
-              kubectl delete bgpadvertisement \
-                e2e-cond-adv-no-instance \
-                2>/dev/null || true
-              kubectl delete bgpinstance \
-                e2e-cond-instance-no-provider \
-                2>/dev/null || true
-              echo "OK: cleanup complete"
+              kubectl delete bgppeer e2e-cond-peer-valid 2>/dev/null || true
+
+    - name: reject-invalid-afi-safi
+      description: >
+        A BGPPeer with an invalid AFI/SAFI combination (ipv4/evpn) must be
+        rejected by the API server CEL validation.
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-cond-peer-bad-afi
+              spec:
+                routerRef:
+                  name: router-does-not-exist
+                address: "2001:db8::1"
+                peerASN: 65099
+                addressFamilies:
+                  - afi: ipv4
+                    safi: evpn
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of ipv4/evpn AFI/SAFI but resource was accepted"
+                kubectl delete bgppeer e2e-cond-peer-bad-afi 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: invalid ipv4/evpn AFI/SAFI correctly rejected"
+              echo "Server response: $OUTPUT"
+
+    - name: reject-l2vpn-unicast
+      description: >
+        A BGPPeer with l2vpn/unicast (invalid combination) must be rejected.
+      try:
+        - script:
+            content: |
+              set +e
+              OUTPUT=$(kubectl apply -f - 2>&1 <<'EOF'
+              apiVersion: bgp.miloapis.com/v1alpha1
+              kind: BGPPeer
+              metadata:
+                name: e2e-cond-peer-bad-safi
+              spec:
+                routerRef:
+                  name: router-does-not-exist
+                address: "2001:db8::1"
+                peerASN: 65099
+                addressFamilies:
+                  - afi: l2vpn
+                    safi: unicast
+              EOF
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of l2vpn/unicast AFI/SAFI but resource was accepted"
+                kubectl delete bgppeer e2e-cond-peer-bad-safi 2>/dev/null || true
+                exit 1
+              fi
+              echo "OK: invalid l2vpn/unicast AFI/SAFI correctly rejected"
+              echo "Server response: $OUTPUT"

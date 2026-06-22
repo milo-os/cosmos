@@ -5,33 +5,6 @@ metadata:
 spec:
   description: Verify BGP system components are healthy before running functional tests
   steps:
-    - name: bgp-daemonset-ready
-      try:
-        - assert:
-            resource:
-              apiVersion: apps/v1
-              kind: DaemonSet
-              metadata:
-                name: cosmos
-                namespace: bgp-system
-              status:
-                (numberReady == desiredNumberScheduled): true
-
-    - name: bgp-pods-ready
-      try:
-        - script:
-            content: |
-              set -e
-              READY=$(kubectl -n bgp-system get pods \
-                -l app.kubernetes.io/name=cosmos \
-                -o jsonpath='{range .items[*]}{.status.containerStatuses[0].ready}{"\n"}{end}' \
-                | grep -c "^true$" || true)
-              if [ "$READY" -eq 0 ]; then
-                echo "ERROR: no cosmos pods found with the cosmos-operator container ready"
-                exit 1
-              fi
-              echo "OK: $READY bgp pod(s) ready"
-
     - name: crds-established
       try:
         - assert:
@@ -39,7 +12,7 @@ spec:
               apiVersion: apiextensions.k8s.io/v1
               kind: CustomResourceDefinition
               metadata:
-                name: bgpinstances.bgp.miloapis.com
+                name: bgprouters.bgp.miloapis.com
               status:
                 (conditions[?type=='Established'].status | [0]): "True"
         - assert:
@@ -55,15 +28,7 @@ spec:
               apiVersion: apiextensions.k8s.io/v1
               kind: CustomResourceDefinition
               metadata:
-                name: bgproutepolicies.bgp.miloapis.com
-              status:
-                (conditions[?type=='Established'].status | [0]): "True"
-        - assert:
-            resource:
-              apiVersion: apiextensions.k8s.io/v1
-              kind: CustomResourceDefinition
-              metadata:
-                name: bgpexternalpeers.bgp.miloapis.com
+                name: bgppolicies.bgp.miloapis.com
               status:
                 (conditions[?type=='Established'].status | [0]): "True"
         - assert:
@@ -79,7 +44,7 @@ spec:
               apiVersion: apiextensions.k8s.io/v1
               kind: CustomResourceDefinition
               metadata:
-                name: bgpproviders.providers.bgp.miloapis.com
+                name: bgpvrfinstances.bgp.miloapis.com
               status:
                 (conditions[?type=='Established'].status | [0]): "True"
         - assert:

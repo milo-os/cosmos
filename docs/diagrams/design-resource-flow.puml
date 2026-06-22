@@ -5,23 +5,13 @@
 
 title BGP CRD Resource Relationships
 
-System(config, "BGPConfiguration", "Speaker identity:\nAS number, router ID, port")
-System(endpoint, "BGPEndpoint", "Speaker address\nand AS number")
-System(policy, "BGPPeeringPolicy", "Automates session creation\nthrough label selectors")
-System(session, "BGPSession", "Peering relationship:\nlocal and remote endpoint")
-System(advert, "BGPAdvertisement", "Prefixes to advertise")
-System(rpolicy, "BGPRoutePolicy", "Import/export filters")
-
-System_Ext(gobgp, "GoBGP", "BGP speaker on each node")
-
-Rel_D(policy, endpoint, "selects")
-Rel_D(policy, session, "creates")
-Rel_R(session, endpoint, "references")
-
-Rel_D(config, gobgp, "configures")
-Rel_D(session, gobgp, "programs peers")
-Rel_D(advert, gobgp, "injects routes")
-Rel_D(rpolicy, gobgp, "applies filters")
+System(router, "BGPRouter", "Routing context:\nAS number, router ID,\naddress families, roles")
+System(peer, "BGPPeer", "BGP session:\nrouterRef / routerSelector,\naddress, peerASN")
+System(advert, "BGPAdvertisement", "Prefixes to advertise:\nrouterRef, addressFamily,\nprefixes, communities")
+System(rpolicy, "BGPPolicy", "Import/export filters:\nrouterRef / routerSelector,\ndirection, ordered terms")
+Rel_D(peer, router, "routerRef / routerSelector")
+Rel_D(advert, router, "routerRef")
+Rel_D(rpolicy, router, "routerRef / routerSelector")
 
 SHOW_LEGEND()
 @enduml

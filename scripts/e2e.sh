@@ -16,27 +16,14 @@ require_tool() {
 }
 
 collect_logs() {
-  echo "=== Pods in bgp-system ==="
-  kubectl get pods -n bgp-system -o wide || true
-  echo ""
-  echo "=== Logs from bgp-system pods ==="
-  for POD in $(kubectl get pods -n bgp-system -l app.kubernetes.io/name=cosmos -o name 2>/dev/null); do
-    echo "--- $POD ---"
-    kubectl logs -n bgp-system "$POD" -c cosmos-operator --tail=500 2>/dev/null \
-      | grep -v "bgp/config: resolved" | tail -50 || true
-  done
-  echo ""
-  echo "=== Events in bgp-system ==="
-  kubectl get events -n bgp-system --sort-by='.lastTimestamp' || true
+  echo "=== Node status ==="
+  kubectl get nodes -o wide || true
   echo ""
   echo "=== Events in kube-system ==="
   kubectl get events -n kube-system --sort-by='.lastTimestamp' | tail -40 || true
   echo ""
-  echo "=== Node status ==="
-  kubectl get nodes -o wide || true
-  echo ""
   echo "=== BGP resources ==="
-  kubectl get bgpinstances,bgpadvertisements,bgproutepolicies,bgpexternalpeers,bgppeers,bgpproviders \
+  kubectl get bgprouters,bgpadvertisements,bgppolicies,bgppeers,bgpvrfinstances \
     --all-namespaces 2>/dev/null || true
   echo ""
   echo "=== VPC resources ==="

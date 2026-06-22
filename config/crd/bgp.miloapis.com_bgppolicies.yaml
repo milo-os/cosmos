@@ -4,31 +4,25 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgppeers.bgp.miloapis.com
+  name: bgppolicies.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPPeer
-    listKind: BGPPeerList
-    plural: bgppeers
+    kind: BGPPolicy
+    listKind: BGPPolicyList
+    plural: bgppolicies
     shortNames:
-    - bgppr
-    singular: bgppeer
+    - bgpp
+    singular: bgppolicy
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.routerRef.name
-      name: ROUTER
+    - jsonPath: .spec.direction
+      name: DIRECTION
       type: string
-    - jsonPath: .spec.address
-      name: PEER-ADDRESS
-      type: string
-    - jsonPath: .spec.peerASN
-      name: PEER-ASN
+    - jsonPath: .spec.terms
+      name: TERMS
       type: integer
-    - jsonPath: .status.sessionState
-      name: STATE
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
@@ -36,7 +30,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          BGPPeer defines a BGP session to a remote peer. It binds to one or more
+          BGPPolicy defines composable, ordered routing policy statements applied to a
+          BGPRouter in a specific direction (import or export). It binds to one or more
           BGPRouter instances via routerRef or routerSelector.
         properties:
           apiVersion:
@@ -57,84 +52,18 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPPeerSpec defines the desired state of BGPPeer.
+            description: BGPPolicySpec defines the desired route policy state.
             properties:
-              address:
-                description: Address is the remote peer's IPv4 or IPv6 address.
-                minLength: 1
+              direction:
+                allOf:
+                - enum:
+                  - import
+                  - export
+                - enum:
+                  - import
+                  - export
+                description: 'Direction is the policy direction: import or export.'
                 type: string
-                x-kubernetes-validations:
-                - message: address must be a valid IPv4 or IPv6 address
-                  rule: isIP(self)
-              addressFamilies:
-                description: AddressFamilies defines the address families negotiated
-                  on this session.
-                items:
-                  description: |-
-                    AddressFamily is a BGP address family expressed as an AFI/SAFI pair.
-                    Valid combinations: ipv4/unicast, ipv6/unicast, l2vpn/evpn.
-                  properties:
-                    afi:
-                      description: AFI is the address family indicator.
-                      enum:
-                      - ipv4
-                      - ipv6
-                      - l2vpn
-                      type: string
-                    safi:
-                      description: SAFI is the subsequent address family indicator.
-                      enum:
-                      - unicast
-                      - evpn
-                      type: string
-                  required:
-                  - afi
-                  - safi
-                  type: object
-                  x-kubernetes-validations:
-                  - message: IPv4 only supports unicast SAFI
-                    rule: 'self.afi == ''ipv4'' ? self.safi == ''unicast'' : true'
-                  - message: IPv6 only supports unicast SAFI
-                    rule: 'self.afi == ''ipv6'' ? self.safi == ''unicast'' : true'
-                  - message: L2VPN only supports evpn SAFI
-                    rule: 'self.afi == ''l2vpn'' ? self.safi == ''evpn'' : true'
-                minItems: 1
-                type: array
-              authSecretRef:
-                description: |-
-                  AuthSecretRef references a Secret in the same namespace containing the
-                  MD5 TCP authentication password under the key "password".
-                properties:
-                  name:
-                    description: Name is the name of the Secret.
-                    minLength: 1
-                    type: string
-                required:
-                - name
-                type: object
-              description:
-                description: Description is a human-readable label for this peer (e.g.,
-                  "spine-1").
-                type: string
-              holdTime:
-                description: |-
-                  HoldTime is the BGP hold timer. Must be 0 (disabled) or >= 3s.
-                  Defaults to 90s if unset.
-                type: string
-                x-kubernetes-validations:
-                - message: holdTime must be 0 or >= 3s
-                  rule: 'duration(self) == duration(''0s'') || duration(self) >= duration(''3s'')'
-              keepaliveTime:
-                description: |-
-                  KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.
-                  Defaults to 30s if unset.
-                type: string
-              peerASN:
-                description: PeerASN is the remote AS number.
-                format: int32
-                maximum: 4294967295
-                minimum: 1
-                type: integer
               routerRef:
                 description: |-
                   RouterRef targets a single BGPRouter by name.
@@ -190,16 +119,139 @@ spec:
                       match.
                     type: object
                 type: object
+              terms:
+                description: |-
+                  Terms is the ordered list of policy statements.
+                  Evaluated from lowest to highest sequence number.
+                items:
+                  description: BGPPolicyTerm is a single ordered policy statement
+                    with match conditions and an action.
+                  properties:
+                    action:
+                      allOf:
+                      - enum:
+                        - permit
+                        - deny
+                      - enum:
+                        - permit
+                        - deny
+                      description: Action is the disposition when this term matches.
+                      type: string
+                    match:
+                      description: Match defines the conditions under which this term
+                        fires.
+                      properties:
+                        addressFamilies:
+                          description: |-
+                            AddressFamilies constrains the match to specific AFI/SAFI combinations.
+                            If empty, all address families are matched.
+                          items:
+                            description: |-
+                              AddressFamily is a BGP address family expressed as an AFI/SAFI pair.
+                              Valid combinations: ipv4/unicast, ipv6/unicast, l2vpn/evpn.
+                            properties:
+                              afi:
+                                description: AFI is the address family indicator.
+                                enum:
+                                - ipv4
+                                - ipv6
+                                - l2vpn
+                                type: string
+                              safi:
+                                description: SAFI is the subsequent address family
+                                  indicator.
+                                enum:
+                                - unicast
+                                - evpn
+                                type: string
+                            required:
+                            - afi
+                            - safi
+                            type: object
+                            x-kubernetes-validations:
+                            - message: IPv4 only supports unicast SAFI
+                              rule: 'self.afi == ''ipv4'' ? self.safi == ''unicast''
+                                : true'
+                            - message: IPv6 only supports unicast SAFI
+                              rule: 'self.afi == ''ipv6'' ? self.safi == ''unicast''
+                                : true'
+                            - message: L2VPN only supports evpn SAFI
+                              rule: 'self.afi == ''l2vpn'' ? self.safi == ''evpn''
+                                : true'
+                          maxItems: 8
+                          type: array
+                        any:
+                          description: Any matches all routes. When true, all other
+                            match fields are ignored.
+                          type: boolean
+                      type: object
+                      x-kubernetes-validations:
+                      - message: addressFamilies must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.addressFamilies)
+                          || self.addressFamilies.size() == 0'
+                    sequence:
+                      description: |-
+                        Sequence is the evaluation order. Lower values are evaluated first.
+                        Must be unique within the policy.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                    set:
+                      description: |-
+                        Set defines mutations applied when action is "permit".
+                        Must not be set when action is "deny".
+                      properties:
+                        communities:
+                          description: Communities defines community add/remove operations.
+                          properties:
+                            add:
+                              description: Add is a list of communities to attach.
+                              items:
+                                maxLength: 24
+                                type: string
+                              maxItems: 32
+                              type: array
+                            remove:
+                              description: Remove is a list of communities to strip.
+                              items:
+                                maxLength: 24
+                                type: string
+                              maxItems: 32
+                              type: array
+                          type: object
+                        localPreference:
+                          description: |-
+                            LocalPreference sets the LOCAL_PREF attribute.
+                            Only meaningful on import (iBGP) or export to iBGP peers.
+                          format: int32
+                          maximum: 4294967295
+                          minimum: 0
+                          type: integer
+                      type: object
+                  required:
+                  - action
+                  - match
+                  - sequence
+                  type: object
+                  x-kubernetes-validations:
+                  - message: set actions are not permitted on deny terms
+                    rule: 'self.action == ''deny'' ? !has(self.set) : true'
+                maxItems: 32
+                minItems: 1
+                type: array
             required:
-            - address
-            - addressFamilies
-            - peerASN
+            - direction
+            - terms
             type: object
             x-kubernetes-validations:
+            - message: Term sequence numbers must be unique
+              rule: self.terms.all(t1, self.terms.filter(t2, t2.sequence == t1.sequence).size()
+                == 1)
             - message: Exactly one of routerRef or routerSelector must be set
               rule: has(self.routerRef) != has(self.routerSelector)
           status:
-            description: BGPPeerStatus defines the observed state of BGPPeer.
+            description: BGPPolicyStatus defines the observed state of BGPPolicy.
             properties:
               conditions:
                 description: Conditions contains the standard conditions for this
@@ -262,19 +314,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              lastEstablishedTime:
-                description: LastEstablishedTime is the timestamp of the most recent
-                  Established transition.
-                format: date-time
-                type: string
               observedGeneration:
                 description: ObservedGeneration is the .metadata.generation this status
                   was computed from.
                 format: int64
                 type: integer
-              sessionState:
-                description: SessionState is the current BGP FSM state of this session.
-                type: string
             type: object
         type: object
     served: true

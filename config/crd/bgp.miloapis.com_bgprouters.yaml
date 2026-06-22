@@ -4,30 +4,33 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: bgppeers.bgp.miloapis.com
+  name: bgprouters.bgp.miloapis.com
 spec:
   group: bgp.miloapis.com
   names:
-    kind: BGPPeer
-    listKind: BGPPeerList
-    plural: bgppeers
+    kind: BGPRouter
+    listKind: BGPRouterList
+    plural: bgprouters
     shortNames:
-    - bgppr
-    singular: bgppeer
+    - bgpr
+    singular: bgprouter
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.routerRef.name
-      name: ROUTER
+    - jsonPath: .spec.targetRef.name
+      name: TARGET
       type: string
-    - jsonPath: .spec.address
-      name: PEER-ADDRESS
+    - jsonPath: .spec.roles
+      name: ROLES
       type: string
-    - jsonPath: .spec.peerASN
-      name: PEER-ASN
+    - jsonPath: .spec.localASN
+      name: ASN
       type: integer
-    - jsonPath: .status.sessionState
-      name: STATE
+    - jsonPath: .spec.routerID
+      name: ROUTER-ID
+      type: string
+    - jsonPath: .status.phase
+      name: PHASE
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
@@ -36,8 +39,10 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          BGPPeer defines a BGP session to a remote peer. It binds to one or more
-          BGPRouter instances via routerRef or routerSelector.
+          BGPRouter defines a logical BGP routing context. It abstracts a processing
+          instance bound to a specific execution context (e.g., a VRF or network
+          namespace) on a target node and acts as the primary ownership boundary for
+          BGPPeer, BGPAdvertisement, and BGPPolicy resources.
         properties:
           apiVersion:
             description: |-
@@ -57,18 +62,11 @@ spec:
           metadata:
             type: object
           spec:
-            description: BGPPeerSpec defines the desired state of BGPPeer.
+            description: BGPRouterSpec defines the desired state of a BGPRouter.
             properties:
-              address:
-                description: Address is the remote peer's IPv4 or IPv6 address.
-                minLength: 1
-                type: string
-                x-kubernetes-validations:
-                - message: address must be a valid IPv4 or IPv6 address
-                  rule: isIP(self)
               addressFamilies:
-                description: AddressFamilies defines the address families negotiated
-                  on this session.
+                description: AddressFamilies defines the address families this router
+                  activates.
                 items:
                   description: |-
                     AddressFamily is a BGP address family expressed as an AFI/SAFI pair.
@@ -100,106 +98,57 @@ spec:
                     rule: 'self.afi == ''l2vpn'' ? self.safi == ''evpn'' : true'
                 minItems: 1
                 type: array
-              authSecretRef:
+              localASN:
                 description: |-
-                  AuthSecretRef references a Secret in the same namespace containing the
-                  MD5 TCP authentication password under the key "password".
-                properties:
-                  name:
-                    description: Name is the name of the Secret.
-                    minLength: 1
-                    type: string
-                required:
-                - name
-                type: object
-              description:
-                description: Description is a human-readable label for this peer (e.g.,
-                  "spine-1").
-                type: string
-              holdTime:
-                description: |-
-                  HoldTime is the BGP hold timer. Must be 0 (disabled) or >= 3s.
-                  Defaults to 90s if unset.
-                type: string
-                x-kubernetes-validations:
-                - message: holdTime must be 0 or >= 3s
-                  rule: 'duration(self) == duration(''0s'') || duration(self) >= duration(''3s'')'
-              keepaliveTime:
-                description: |-
-                  KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.
-                  Defaults to 30s if unset.
-                type: string
-              peerASN:
-                description: PeerASN is the remote AS number.
+                  LocalASN is the BGP Autonomous System Number for this router.
+                  Must be a valid 2-byte or 4-byte ASN per RFC 6793.
                 format: int32
                 maximum: 4294967295
                 minimum: 1
                 type: integer
-              routerRef:
+              roles:
                 description: |-
-                  RouterRef targets a single BGPRouter by name.
-                  Mutually exclusive with routerSelector.
+                  Roles describes the functional roles this router participates in.
+                  At least one role is required.
+                items:
+                  description: RouterRole defines the functional role of a BGPRouter
+                    within the network.
+                  enum:
+                  - fabric
+                  - tenant
+                  - transit
+                  type: string
+                minItems: 1
+                type: array
+              routerID:
+                description: |-
+                  RouterID is a unique 32-bit identifier expressed in IPv4 dotted-decimal notation.
+                  In an IPv6-only underlay this is a logical identifier only.
+                format: ipv4
+                type: string
+              targetRef:
+                description: TargetRef identifies the Node this router executes on.
                 properties:
+                  kind:
+                    description: Kind is the target resource kind (e.g. Node).
+                    minLength: 1
+                    type: string
                   name:
-                    description: Name is the name of the BGPRouter.
+                    description: Name is the name of the target resource.
                     minLength: 1
                     type: string
                 required:
+                - kind
                 - name
                 type: object
-              routerSelector:
-                description: |-
-                  RouterSelector targets one or more BGPRouters by label.
-                  Mutually exclusive with routerRef.
-                properties:
-                  matchExpressions:
-                    description: MatchExpressions is a list of label selector requirements.
-                    items:
-                      description: |-
-                        A label selector requirement is a selector that contains values, a key, and an operator that
-                        relates the key and values.
-                      properties:
-                        key:
-                          description: key is the label key that the selector applies
-                            to.
-                          type: string
-                        operator:
-                          description: |-
-                            operator represents a key's relationship to a set of values.
-                            Valid operators are In, NotIn, Exists and DoesNotExist.
-                          type: string
-                        values:
-                          description: |-
-                            values is an array of string values. If the operator is In or NotIn,
-                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                            the values array must be empty. This array is replaced during a strategic
-                            merge patch.
-                          items:
-                            type: string
-                          type: array
-                          x-kubernetes-list-type: atomic
-                      required:
-                      - key
-                      - operator
-                      type: object
-                    type: array
-                  matchLabels:
-                    additionalProperties:
-                      type: string
-                    description: MatchLabels is a map of key/value label pairs to
-                      match.
-                    type: object
-                type: object
             required:
-            - address
             - addressFamilies
-            - peerASN
+            - localASN
+            - routerID
+            - targetRef
             type: object
-            x-kubernetes-validations:
-            - message: Exactly one of routerRef or routerSelector must be set
-              rule: has(self.routerRef) != has(self.routerSelector)
           status:
-            description: BGPPeerStatus defines the observed state of BGPPeer.
+            description: BGPRouterStatus defines the observed state of a BGPRouter.
             properties:
               conditions:
                 description: Conditions contains the standard conditions for this
@@ -262,19 +211,41 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              lastEstablishedTime:
-                description: LastEstablishedTime is the timestamp of the most recent
-                  Established transition.
-                format: date-time
-                type: string
               observedGeneration:
                 description: ObservedGeneration is the .metadata.generation this status
                   was computed from.
                 format: int64
                 type: integer
-              sessionState:
-                description: SessionState is the current BGP FSM state of this session.
+              peers:
+                description: Peers summarizes peer session counts.
+                properties:
+                  established:
+                    description: Established is the count of peers currently in the
+                      Established state.
+                    format: int32
+                    type: integer
+                  total:
+                    description: Total is the total number of configured peers.
+                    format: int32
+                    type: integer
+                required:
+                - established
+                - total
+                type: object
+              phase:
+                description: Phase is the high-level lifecycle state of this router.
                 type: string
+              roles:
+                description: Roles reflects the active roles as observed by the implementation.
+                items:
+                  description: RouterRole defines the functional role of a BGPRouter
+                    within the network.
+                  enum:
+                  - fabric
+                  - tenant
+                  - transit
+                  type: string
+                type: array
             type: object
         type: object
     served: true

@@ -15,9 +15,8 @@ func newTestVRF() *BGPVRFInstance {
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: "test-vrf"},
 		Spec: BGPVRFInstanceSpec{
-			InstanceRef: "overlay",
-			ProviderSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{"plane": "overlay"},
+			RouterTarget: RouterTarget{
+				RouterRef: &RouterRef{Name: "overlay-router"},
 			},
 			RouteDistinguisher: "65000:100",
 			ImportRouteTargets: []RouteTarget{{Value: "65000:100"}},
@@ -35,7 +34,7 @@ func TestBGPVRFInstanceDeepCopy(t *testing.T) {
 	// Mutate dup — original must be unaffected.
 	dup.Spec.RouteDistinguisher = "65001:200"
 	dup.Spec.ImportRouteTargets[0].Value = "65001:200"
-	dup.Spec.ProviderSelector.MatchLabels["plane"] = "underlay"
+	dup.Spec.RouterRef.Name = "other-router"
 
 	if orig.Spec.RouteDistinguisher != "65000:100" {
 		t.Errorf("RouteDistinguisher mutated: got %q", orig.Spec.RouteDistinguisher)
@@ -43,8 +42,8 @@ func TestBGPVRFInstanceDeepCopy(t *testing.T) {
 	if orig.Spec.ImportRouteTargets[0].Value != "65000:100" {
 		t.Errorf("ImportRouteTargets[0] mutated: got %q", orig.Spec.ImportRouteTargets[0].Value)
 	}
-	if orig.Spec.ProviderSelector.MatchLabels["plane"] != "overlay" {
-		t.Errorf("ProviderSelector.MatchLabels mutated: got %q", orig.Spec.ProviderSelector.MatchLabels["plane"])
+	if orig.Spec.RouterRef.Name != "overlay-router" {
+		t.Errorf("RouterRef mutated: got %q", orig.Spec.RouterRef.Name)
 	}
 }
 
@@ -76,8 +75,8 @@ func TestBGPVRFInstanceJSONRoundTrip(t *testing.T) {
 	if got.Spec.RouteDistinguisher != orig.Spec.RouteDistinguisher {
 		t.Errorf("RD: got %q, want %q", got.Spec.RouteDistinguisher, orig.Spec.RouteDistinguisher)
 	}
-	if got.Spec.InstanceRef != orig.Spec.InstanceRef {
-		t.Errorf("InstanceRef: got %q, want %q", got.Spec.InstanceRef, orig.Spec.InstanceRef)
+	if got.Spec.RouterRef.Name != orig.Spec.RouterRef.Name {
+		t.Errorf("RouterRef: got %q, want %q", got.Spec.RouterRef.Name, orig.Spec.RouterRef.Name)
 	}
 	if len(got.Spec.ImportRouteTargets) != 2 {
 		t.Errorf("ImportRouteTargets len: got %d, want 2", len(got.Spec.ImportRouteTargets))

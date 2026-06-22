@@ -1,0 +1,11 @@
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRouter
+metadata:
+  name: rr-1
+  namespace: default
+spec:
+  targetRef:
+    kind: RouterDevice
+    name: rr-1
+  localASN: 65001
+  routerID: 10.0.0.2

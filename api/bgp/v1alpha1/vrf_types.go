@@ -4,15 +4,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BGPVRFInstance configures an L2VPN EVPN VRF on providers matched by
-// spec.providerSelector. The referenced BGPInstance must have L2VPN/EVPN in
-// its addressFamilies.
+// BGPVRFInstance configures an L2VPN EVPN VRF on matched BGPRouters.
+// The referenced BGPRouter must have l2vpn-evpn in its addressFamilies.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=bgpvrf
+// +kubebuilder:resource:scope=Namespaced,shortName=bgpvrf
 // +kubebuilder:printcolumn:name="RD",type="string",JSONPath=".spec.routeDistinguisher"
-// +kubebuilder:printcolumn:name="Instance",type="string",JSONPath=".spec.instanceRef"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type BGPVRFInstance struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -24,15 +22,9 @@ type BGPVRFInstance struct {
 
 // BGPVRFInstanceSpec defines the desired VRF configuration.
 //
-// +kubebuilder:validation:XValidation:rule="self.routeDistinguisher.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')",message="routeDistinguisher must be in ASN:NN or IP:NN format"
+// +kubebuilder:validation:XValidation:rule="self.routeDistinguisher.matches('^([0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}|[0-9]{1,9}):[0-9]{1,9}$')",message="routeDistinguisher must be in ASN:NN or IP:NN format"
 type BGPVRFInstanceSpec struct {
-	// InstanceRef is the name of the BGPInstance this VRF is associated with.
-	// The referenced instance must have L2VPN/EVPN in its addressFamilies.
-	InstanceRef string `json:"instanceRef"`
-
-	// ProviderSelector selects the BGPProvider resources to configure this VRF on.
-	// The matched providers must support the L2VPN/EVPN address family.
-	ProviderSelector metav1.LabelSelector `json:"providerSelector"`
+	RouterTarget `json:",inline"`
 
 	// RouteDistinguisher uniquely identifies this VRF in the BGP control plane.
 	// Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
@@ -43,7 +35,6 @@ type BGPVRFInstanceSpec struct {
 
 	// ImportRouteTargets is the list of BGP extended community route targets
 	// used to import routes into this VRF.
-	// Format per entry: "ASN:NN" or "IP:NN".
 	//
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=32
@@ -51,7 +42,6 @@ type BGPVRFInstanceSpec struct {
 
 	// ExportRouteTargets is the list of BGP extended community route targets
 	// attached to routes exported from this VRF.
-	// Format per entry: "ASN:NN" or "IP:NN".
 	//
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=32
@@ -60,7 +50,7 @@ type BGPVRFInstanceSpec struct {
 
 // RouteTarget is a BGP extended community in "ASN:NN" or "IP:NN" format.
 //
-// +kubebuilder:validation:XValidation:rule="self.value.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|[0-9]{1,10}):[0-9]{1,10}$')",message="value must be in ASN:NN or IP:NN format"
+// +kubebuilder:validation:XValidation:rule="self.value.matches('^([0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}|[0-9]{1,9}):[0-9]{1,9}$')",message="value must be in ASN:NN or IP:NN format"
 type RouteTarget struct {
 	// Value is the route target extended community string.
 	// Format: "ASN:NN" (e.g. "65000:100") or "IP:NN" (e.g. "192.0.2.1:100").
@@ -79,12 +69,12 @@ type BGPVRFInstanceStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// Providers holds per-provider reconciliation status.
+	// Routers holds per-router reconciliation status.
 	//
 	// +listType=map
-	// +listMapKey=providerName
+	// +listMapKey=routerName
 	// +optional
-	Providers []ProviderStatus `json:"providers,omitempty"`
+	Routers []RouterStatus `json:"routers,omitempty"`
 }
 
 // +kubebuilder:object:root=true

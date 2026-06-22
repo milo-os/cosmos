@@ -1,0 +1,13 @@
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPRouter
+metadata:
+  name: region1-node-a
+  namespace: default
+spec:
+  targetRef:
+    kind: Node
+    name: node-a
+  roles:
+    - fabric
+  localASN: 65001
+  routerID: 10.0.0.1
