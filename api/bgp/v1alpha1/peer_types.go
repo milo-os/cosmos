@@ -43,7 +43,7 @@ type BGPPeerSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
-	PeerASN uint32 `json:"peerASN"`
+	PeerASN int64 `json:"peerASN"`
 
 	// Address is the remote peer's IPv4 or IPv6 address.
 	// +kubebuilder:validation:Required

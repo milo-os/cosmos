@@ -131,7 +131,7 @@ spec:
                 type: string
               peerASN:
                 description: PeerASN is the remote AS number.
-                format: int32
+                format: int64
                 maximum: 4294967295
                 minimum: 1
                 type: integer

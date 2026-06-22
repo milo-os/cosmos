@@ -51,7 +51,7 @@ type BGPRouterSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
-	LocalASN uint32 `json:"localASN"`
+	LocalASN int64 `json:"localASN"`
 
 	// RouterID is a unique 32-bit identifier expressed in IPv4 dotted-decimal notation.
 	// In an IPv6-only underlay this is a logical identifier only.
