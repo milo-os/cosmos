@@ -102,7 +102,7 @@ spec:
                 description: |-
                   LocalASN is the BGP Autonomous System Number for this router.
                   Must be a valid 2-byte or 4-byte ASN per RFC 6793.
-                format: int32
+                format: int64
                 maximum: 4294967295
                 minimum: 1
                 type: integer
