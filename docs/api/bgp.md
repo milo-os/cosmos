@@ -18,10 +18,10 @@ contracts. Cosmos does not define how routing intent is realized.
 
 The fleet uses two BGP planes per node:
 
-| Plane | Purpose |
-|-------|---------|
+| Plane        | Purpose                                                            |
+|--------------|--------------------------------------------------------------------|
 | **Underlay** | IPv6 unicast fabric routing between nodes and top-of-rack switches |
-| **Overlay** | L2VPN EVPN distribution for tenant workloads |
+| **Overlay**  | L2VPN EVPN distribution for tenant workloads                       |
 
 Each plane is represented by a separate `BGPRouter` resource. `BGPPeer`,
 `BGPAdvertisement`, and `BGPPolicy` resources target a router by direct
@@ -95,50 +95,50 @@ is the primary ownership boundary for `BGPPeer`, `BGPAdvertisement`, and
 
 #### Spec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `targetRef` | `TargetRef` | Yes | Identifies the execution target. |
-| `targetRef.kind` | `string` | Yes | Target resource kind. Supported: `Node`. |
-| `targetRef.name` | `string` | Yes | Name of the target resource. |
-| `roles` | `[]RouterRole` | Yes | Functional roles. Minimum 1. |
-| `localASN` | `uint32` | Yes | Local AS number. Range: 1–4294967295. |
-| `routerID` | `string` | Yes | Router ID in IPv4 dotted-decimal notation. |
-| `addressFamilies` | `[]AddressFamily` | Yes | Address families this router activates. Minimum 1. |
+| Field             | Type              | Required | Description                                                |
+|-------------------|-------------------|----------|------------------------------------------------------------|
+| `targetRef`       | `TargetRef`       | Yes      | Identifies the execution target.                           |
+| `targetRef.kind`  | `string`          | Yes      | Target resource kind. Supported: `Node`.                   |
+| `targetRef.name`  | `string`          | Yes      | Name of the target resource.                               |
+| `roles`           | `[]RouterRole`    | Yes      | Functional roles. Minimum 1.                               |
+| `localASN`        | `uint32`          | Yes      | Local AS number. Range: 1–4294967295.                      |
+| `routerID`        | `string`          | Yes      | Router ID in IPv4 dotted-decimal notation.                 |
+| `addressFamilies` | `[]AddressFamily` | Yes      | Address families this router activates. Minimum 1.         |
 
 **RouterRole** (string enum)
 
-| Value | Meaning |
-|-------|---------|
-| `fabric` | Router participates in the internal fabric (underlay or overlay). |
-| `tenant` | Router serves a tenant workload network. |
-| `transit` | Router carries transit traffic between autonomous systems. |
+| Value     | Meaning                                                           |
+|-----------|-------------------------------------------------------------------|
+| `fabric`  | Router participates in the internal fabric (underlay or overlay). |
+| `tenant`  | Router serves a tenant workload network.                          |
+| `transit` | Router carries transit traffic between autonomous systems.        |
 
 #### Status
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `phase` | `string` | Current phase. Enum: `Pending`, `Ready`, `Failed`. |
-| `observedGeneration` | `int64` | Last spec generation reflected in this status. |
-| `roles` | `[]RouterRole` | Active roles as observed by the implementation. |
-| `peers` | `BGPRouterPeerSummary` | Peer session counts. |
-| `conditions` | `[]metav1.Condition` | Top-level conditions. |
+| Field                | Type                   | Description                                        |
+|----------------------|------------------------|----------------------------------------------------|
+| `phase`              | `string`               | Current phase. Enum: `Pending`, `Ready`, `Failed`. |
+| `observedGeneration` | `int64`                | Last spec generation reflected in this status.     |
+| `roles`              | `[]RouterRole`         | Active roles as observed by the implementation.    |
+| `peers`              | `BGPRouterPeerSummary` | Peer session counts.                               |
+| `conditions`         | `[]metav1.Condition`   | Top-level conditions.                              |
 
 **BGPRouterPeerSummary**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `total` | `int32` | Total number of configured peers. |
+| Field         | Type    | Description                                    |
+|---------------|---------|------------------------------------------------|
+| `total`       | `int32` | Total number of configured peers.              |
 | `established` | `int32` | Count of peers currently in Established state. |
 
 **BGPRouter Conditions**
 
-| Type | Required | Meaning when True |
-|------|----------|-------------------|
-| `Ready` | Required | Router is fully configured and the runtime is accepting routing intent. |
-| `RuntimeAvailable` | Required | The routing runtime is reachable and accepting configuration. |
-| `ConfigApplied` | Required | Current spec has been translated and applied to the runtime. |
-| `Degraded` | Required | One or more configured peers has not reached Established state. |
-| `PeersEstablished` | Optional | All configured peers have reached Established state. |
+| Type               | Required | Meaning when True                                                       |
+|--------------------|----------|-------------------------------------------------------------------------|
+| `Ready`            | Required | Router is fully configured and the runtime is accepting routing intent. |
+| `RuntimeAvailable` | Required | The routing runtime is reachable and accepting configuration.           |
+| `ConfigApplied`    | Required | Current spec has been translated and applied to the runtime.            |
+| `Degraded`         | Required | One or more configured peers has not reached Established state.         |
+| `PeersEstablished` | Optional | All configured peers have reached Established state.                    |
 
 #### Example
 
@@ -172,35 +172,35 @@ spec:
 
 #### Spec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `routerRef` | `RouterRef` | Conditional | Direct reference to a single BGPRouter. Mutually exclusive with `routerSelector`. |
-| `routerSelector` | `RouterSelector` | Conditional | Label selector for BGPRouter resources. Mutually exclusive with `routerRef`. |
-| `peerASN` | `uint32` | Yes | Remote AS number. Range: 1–4294967295. |
-| `address` | `string` | Yes | Remote peer's IPv4 or IPv6 address. |
-| `description` | `string` | No | Human-readable label for this peer (e.g., `"spine-1"`). |
-| `authSecretRef` | `LocalSecretRef` | No | References a Secret containing the MD5 TCP authentication password under key `"password"`. |
-| `addressFamilies` | `[]AddressFamily` | Yes | Address families negotiated on this session. Minimum 1. |
-| `holdTime` | `Duration` | No | BGP hold timer. Must be 0 (disabled) or ≥ 3s. Default: `90s`. |
-| `keepaliveTime` | `Duration` | No | BGP keepalive interval. Must be ≤ holdTime / 3. Default: `30s`. |
+| Field             | Type              | Required | Description                                                |
+|-------------------|-------------------|----------|------------------------------------------------------------|
+| `routerRef`       | `RouterRef`       | Conditional | Direct reference to a single BGPRouter. Mutually exclusive with `routerSelector`. |
+| `routerSelector`  | `RouterSelector`  | Conditional | Label selector for BGPRouter resources. Mutually exclusive with `routerRef`. |
+| `peerASN`         | `uint32`          | Yes      | Remote AS number. Range: 1–4294967295.                     |
+| `address`         | `string`          | Yes      | Remote peer's IPv4 or IPv6 address.                        |
+| `description`     | `string`          | No       | Human-readable label for this peer (e.g., `"spine-1"`).    |
+| `authSecretRef`   | `LocalSecretRef`  | No       | References a Secret containing the MD5 TCP authentication password under key `"password"`. |
+| `addressFamilies` | `[]AddressFamily` | Yes      | Address families negotiated on this session. Minimum 1.    |
+| `holdTime`        | `Duration`        | No       | BGP hold timer. Must be 0 (disabled) or ≥ 3s. Default: `90s`. |
+| `keepaliveTime`   | `Duration`        | No       | BGP keepalive interval. Must be ≤ holdTime / 3. Default: `30s`. |
 
 **LocalSecretRef**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | `string` | Yes | Name of the Secret in the same namespace. |
+| Field  | Type     | Required | Description                               |
+|--------|----------|----------|-------------------------------------------|
+| `name` | `string` | Yes      | Name of the Secret in the same namespace. |
 
 > Timer fields use Go duration strings (e.g., `"90s"`, `"1m30s"`). Both forms
 > are valid; implementations must accept either.
 
 #### Status
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `observedGeneration` | `int64` | Last spec generation reflected in this status. |
-| `sessionState` | `string` | Current BGP FSM state. |
-| `lastEstablishedTime` | `Time` | Timestamp of the most recent Established transition. |
-| `conditions` | `[]metav1.Condition` | Top-level conditions. |
+| Field                 | Type                 | Description                                          |
+|-----------------------|----------------------|------------------------------------------------------|
+| `observedGeneration`  | `int64`              | Last spec generation reflected in this status.       |
+| `sessionState`        | `string`             | Current BGP FSM state.                               |
+| `lastEstablishedTime` | `Time`               | Timestamp of the most recent Established transition. |
+| `conditions`          | `[]metav1.Condition` | Top-level conditions.                                |
 
 **Session State** (string enum)
 
@@ -208,19 +208,57 @@ spec:
 
 **BGPPeer Conditions**
 
-| Type | Required | Meaning when True |
-|------|----------|-------------------|
-| `Ready` | Required | Session is Established and address families have been negotiated. |
-| `Accepted` | Required | Peer config has been accepted by the runtime. |
-| `SessionIdle` | Required | BGP FSM is in Idle state. |
-| `SessionConnect` | Required | BGP FSM is in Connect state. |
-| `SessionActive` | Required | BGP FSM is in Active state. |
-| `SessionOpenSent` | Required | BGP FSM is in OpenSent state. |
-| `SessionOpenConfirm` | Required | BGP FSM is in OpenConfirm state. |
-| `SessionEstablished` | Required | BGP FSM is in Established state. |
+| Type       | Required | Meaning when True                                                 |
+|------------|----------|-------------------------------------------------------------------|
+| `Ready`    | Required | Session is Established and address families have been negotiated. |
+| `Accepted` | Required | Peer config has been accepted by the runtime.                     |
 
-The session FSM state conditions (`SessionIdle` through `SessionEstablished`)
-are mutually exclusive — exactly one must be `True` at any time.
+Condition type constants are defined in Go as `ConditionTypeReady` and
+`ConditionTypeAccepted` in `api/bgp/v1alpha1/peer_types.go`.
+
+The `Ready` condition reflects the BGP FSM state via its `Status` and `Reason`:
+
+| `sessionState`  | `Ready.Status` | `Ready.Reason`         | Meaning                                       |
+|-----------------|----------------|------------------------|-----------------------------------------------|
+| `Established`   | `True`         | `Established`          | Session is up; all address families negotiated. |
+| `OpenConfirm`   | `False`        | `OpenConfirm`          | BGP OPEN messages exchanged, holding timer running. |
+| `OpenSent`      | `False`        | `OpenSent`             | OPEN message sent, awaiting OPEN from peer.   |
+| `Active`        | `False`        | `Active`               | Attempting to establish (connecting or re-connecting). |
+| `Connect`       | `False`        | `Connect`              | Waiting for TCP connection or initiating connection. |
+| `Idle`          | `False`        | see below              | Session is idle; Reason explains why.         |
+
+**Idle sub-reasons**
+
+When `sessionState` is `Idle`, the `Ready.Reason` is set by the controller
+based on recent events:
+
+| Reason                | Meaning                                                    |
+|-----------------------|------------------------------------------------------------|
+| `BackOff`             | Exponential back-off before next connection attempt.       |
+| `ConnectionRefused`   | TCP connection was actively refused by the peer.           |
+| `HoldTimerExpired`    | Peer failed to send KEEPALIVE within the hold timer.       |
+| `Idle`                | No recent failure; session is simply not started yet.      |
+
+**Controller status update logic**
+
+The reference implementation is the `BGPPeerStatus.updatePeerConditions` method
+in `api/bgp/v1alpha1/peer_types.go`. Call it whenever `sessionState` changes:
+
+```go
+status.updatePeerConditions(state, peer.Generation, idleReason)
+```
+
+For the `Accepted` condition, use `SetAcceptedCondition`:
+
+```go
+status.SetAcceptedCondition(true, peer.Generation, "ConfigAccepted", msg)
+```
+
+This pattern avoids the high API server churn of maintaining 6 mutually exclusive
+conditions that flip every few seconds during session establishment. The
+`sessionState` string field carries the exact FSM state for detailed inspection;
+the `Ready` condition provides the high-level signal that consumers (e.g. HPA,
+gates, dashboards) need.
 
 #### Example
 
@@ -253,13 +291,13 @@ selector fan-out is intentionally omitted to avoid ambiguous prefix attribution.
 
 #### Spec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `routerRef` | `RouterRef` | Yes | Direct reference to a single BGPRouter. |
-| `addressFamily` | `AddressFamily` | Yes | AFI/SAFI for this advertisement. |
-| `prefixes` | `[]string` | Yes | CIDR prefixes to advertise. Minimum 1. |
-| `communities` | `[]string` | No | BGP communities to attach to advertised prefixes. |
-| `localPreference` | `*uint32` | No | BGP LOCAL_PREF attribute. Only meaningful for iBGP sessions. |
+| Field             | Type            | Required | Description                                                |
+|-------------------|-----------------|----------|------------------------------------------------------------|
+| `routerRef`       | `RouterRef`     | Yes      | Direct reference to a single BGPRouter.                    |
+| `addressFamily`   | `AddressFamily` | Yes      | AFI/SAFI for this advertisement.                           |
+| `prefixes`        | `[]string`      | Yes      | CIDR prefixes to advertise. Minimum 1.                     |
+| `communities`     | `[]string`      | No       | BGP communities to attach to advertised prefixes.          |
+| `localPreference` | `*uint32`       | No       | BGP LOCAL_PREF attribute. Only meaningful for iBGP sessions. |
 
 #### Status
 

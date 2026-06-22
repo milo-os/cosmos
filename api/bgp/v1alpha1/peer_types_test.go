@@ -203,3 +203,225 @@ func TestBGPPeerPeerASNAboveSignedInt32Max(t *testing.T) {
 		t.Errorf("PeerASN after round-trip: got %d, want %d", got.Spec.PeerASN, aboveSignedMax)
 	}
 }
+
+// TestConditionConstants verifies the condition type and idle reason constants.
+func TestConditionConstants(t *testing.T) {
+	if ConditionTypeReady != "Ready" {
+		t.Errorf("ConditionTypeReady = %q, want %q", ConditionTypeReady, "Ready")
+	}
+	if ConditionTypeAccepted != "Accepted" {
+		t.Errorf("ConditionTypeAccepted = %q, want %q", ConditionTypeAccepted, "Accepted")
+	}
+	if IdleReasonBackOff != "BackOff" {
+		t.Errorf("IdleReasonBackOff = %q, want %q", IdleReasonBackOff, "BackOff")
+	}
+	if IdleReasonConnectionRefused != "ConnectionRefused" {
+		t.Errorf("IdleReasonConnectionRefused = %q, want %q", IdleReasonConnectionRefused, "ConnectionRefused")
+	}
+	if IdleReasonHoldTimerExpired != "HoldTimerExpired" {
+		t.Errorf("IdleReasonHoldTimerExpired = %q, want %q", IdleReasonHoldTimerExpired, "HoldTimerExpired")
+	}
+	if IdleReasonIdle != "Idle" {
+		t.Errorf("IdleReasonIdle = %q, want %q", IdleReasonIdle, "Idle")
+	}
+}
+
+// TestUpdatePeerConditions_Established verifies Ready=True for Established.
+func TestUpdatePeerConditions_Established(t *testing.T) {
+	var status BGPPeerStatus
+	status.updatePeerConditions(BGPPeerStateEstablished, 42, "")
+
+	c := findCondition(status.Conditions, ConditionTypeReady)
+	if c == nil {
+		t.Fatal("Ready condition not found")
+	}
+	if c.Status != metav1.ConditionTrue {
+		t.Errorf("Ready.Status = %s, want True", c.Status)
+	}
+	if c.Reason != "Established" {
+		t.Errorf("Ready.Reason = %q, want %q", c.Reason, "Established")
+	}
+	if c.ObservedGeneration != 42 {
+		t.Errorf("ObservedGeneration = %d, want 42", c.ObservedGeneration)
+	}
+}
+
+// TestUpdatePeerConditions_Intermediate verifies Ready=False with FSM Reason.
+func TestUpdatePeerConditions_Intermediate(t *testing.T) {
+	tests := []struct {
+		state  BGPPeerState
+		reason string
+	}{
+		{BGPPeerStateOpenConfirm, "OpenConfirm"},
+		{BGPPeerStateOpenSent, "OpenSent"},
+		{BGPPeerStateActive, "Active"},
+		{BGPPeerStateConnect, "Connect"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.state), func(t *testing.T) {
+			var status BGPPeerStatus
+			status.updatePeerConditions(tt.state, 1, "")
+
+			c := findCondition(status.Conditions, ConditionTypeReady)
+			if c == nil {
+				t.Fatal("Ready condition not found")
+			}
+			if c.Status != metav1.ConditionFalse {
+				t.Errorf("Ready.Status = %s, want False", c.Status)
+			}
+			if c.Reason != tt.reason {
+				t.Errorf("Ready.Reason = %q, want %q", c.Reason, tt.reason)
+			}
+		})
+	}
+}
+
+// TestUpdatePeerConditions_Idle verifies Ready=False with caller-supplied idle reason.
+func TestUpdatePeerConditions_Idle(t *testing.T) {
+	tests := []struct {
+		reason string
+	}{
+		{IdleReasonBackOff},
+		{IdleReasonConnectionRefused},
+		{IdleReasonHoldTimerExpired},
+		{IdleReasonIdle},
+		{"CustomReason"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.reason, func(t *testing.T) {
+			var status BGPPeerStatus
+			status.updatePeerConditions(BGPPeerStateIdle, 7, tt.reason)
+
+			c := findCondition(status.Conditions, ConditionTypeReady)
+			if c == nil {
+				t.Fatal("Ready condition not found")
+			}
+			if c.Status != metav1.ConditionFalse {
+				t.Errorf("Ready.Status = %s, want False", c.Status)
+			}
+			if c.Reason != tt.reason {
+				t.Errorf("Ready.Reason = %q, want %q", c.Reason, tt.reason)
+			}
+		})
+	}
+}
+
+// TestUpdatePeerConditions_Unknown verifies the default branch.
+func TestUpdatePeerConditions_Unknown(t *testing.T) {
+	var status BGPPeerStatus
+	status.updatePeerConditions("NonExistent", 0, "")
+
+	c := findCondition(status.Conditions, ConditionTypeReady)
+	if c == nil {
+		t.Fatal("Ready condition not found")
+	}
+	if c.Status != metav1.ConditionFalse {
+		t.Errorf("Ready.Status = %s, want False", c.Status)
+	}
+	if c.Reason != "Unknown" {
+		t.Errorf("Ready.Reason = %q, want %q", c.Reason, "Unknown")
+	}
+}
+
+// TestUpdatePeerConditions_Idempotent verifies SetStatusCondition replaces previous Ready.
+func TestUpdatePeerConditions_Idempotent(t *testing.T) {
+	var status BGPPeerStatus
+
+	// First update: Idle.
+	status.updatePeerConditions(BGPPeerStateIdle, 1, IdleReasonIdle)
+	if len(status.Conditions) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(status.Conditions))
+	}
+
+	// Second update: Established — should replace, not append.
+	status.updatePeerConditions(BGPPeerStateEstablished, 2, "")
+	if len(status.Conditions) != 1 {
+		t.Fatalf("expected 1 condition after update, got %d", len(status.Conditions))
+	}
+	c := findCondition(status.Conditions, ConditionTypeReady)
+	if c == nil || c.Status != metav1.ConditionTrue {
+		t.Error("Ready should be True after Established update")
+	}
+	if c.ObservedGeneration != 2 {
+		t.Errorf("ObservedGeneration = %d, want 2", c.ObservedGeneration)
+	}
+}
+
+// TestSetAcceptedCondition verifies the Accepted condition helper.
+func TestSetAcceptedCondition(t *testing.T) {
+	t.Run("accepted", func(t *testing.T) {
+		var status BGPPeerStatus
+		status.SetAcceptedCondition(true, 5, "ConfigAccepted", "Peer config accepted by runtime.")
+
+		c := findCondition(status.Conditions, ConditionTypeAccepted)
+		if c == nil {
+			t.Fatal("Accepted condition not found")
+		}
+		if c.Status != metav1.ConditionTrue {
+			t.Errorf("Accepted.Status = %s, want True", c.Status)
+		}
+		if c.Reason != "ConfigAccepted" {
+			t.Errorf("Accepted.Reason = %q, want %q", c.Reason, "ConfigAccepted")
+		}
+	})
+
+	t.Run("rejected", func(t *testing.T) {
+		var status BGPPeerStatus
+		status.SetAcceptedCondition(false, 3, "InvalidPeerAddress", "address must be a valid IP")
+
+		c := findCondition(status.Conditions, ConditionTypeAccepted)
+		if c == nil {
+			t.Fatal("Accepted condition not found")
+		}
+		if c.Status != metav1.ConditionFalse {
+			t.Errorf("Accepted.Status = %s, want False", c.Status)
+		}
+	})
+
+	t.Run("toggles", func(t *testing.T) {
+		var status BGPPeerStatus
+		// Accept first.
+		status.SetAcceptedCondition(true, 1, "Accepted", "ok")
+		c := findCondition(status.Conditions, ConditionTypeAccepted)
+		if c == nil || c.Status != metav1.ConditionTrue {
+			t.Error("expected True after first call")
+		}
+		// Then reject — should flip.
+		status.SetAcceptedCondition(false, 2, "Rejected", "bad")
+		c = findCondition(status.Conditions, ConditionTypeAccepted)
+		if c == nil || c.Status != metav1.ConditionFalse {
+			t.Error("expected False after second call")
+		}
+		if c.ObservedGeneration != 2 {
+			t.Errorf("ObservedGeneration = %d, want 2", c.ObservedGeneration)
+		}
+	})
+}
+
+// TestUpdatePeerConditions_CoexistWithAccepted verifies Ready and Accepted
+// conditions can coexist in the same Conditions slice.
+func TestUpdatePeerConditions_CoexistWithAccepted(t *testing.T) {
+	var status BGPPeerStatus
+	status.SetAcceptedCondition(true, 1, "Accepted", "config accepted")
+	status.updatePeerConditions(BGPPeerStateEstablished, 1, "")
+
+	if len(status.Conditions) != 2 {
+		t.Fatalf("expected 2 conditions, got %d", len(status.Conditions))
+	}
+
+	ready := findCondition(status.Conditions, ConditionTypeReady)
+	accepted := findCondition(status.Conditions, ConditionTypeAccepted)
+	if ready == nil || accepted == nil {
+		t.Error("both Ready and Accepted conditions should be present")
+	}
+}
+
+// findCondition returns the condition of the given type, or nil if not found.
+func findCondition(conds []metav1.Condition, typ string) *metav1.Condition {
+	for i := range conds {
+		if conds[i].Type == typ {
+			return &conds[i]
+		}
+	}
+	return nil
+}
