@@ -15,8 +15,8 @@ coverage.txt
 go.build/
 
 # ── Generated files (regenerate with `task generate` / `task manifests`)
-api/**/zz_generated.deepcopy.go
-config/crd/
+# Note: These are tracked in git. Run `task generate` / `task manifests`
+# to regenerate, then commit the changes. Do not hand-edit.
 
 # ── IDE ─────────────────────────────────────────────────────────────
 .idea/
