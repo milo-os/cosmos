@@ -75,6 +75,21 @@ type BGPVRFInstanceStatus struct {
 	// +listMapKey=routerName
 	// +optional
 	Routers []RouterStatus `json:"routers,omitempty"`
+
+	// EVPNRouteCounts holds the total number of EVPN routes per route type.
+	// Populated when the VRF is configured with l2vpn/evpn address family.
+	// +optional
+	EVPNRouteCounts []EVPNRouteCount `json:"evpnRouteCounts,omitempty"`
+}
+
+// EVPNRouteCount holds the route count for a specific EVPN route type.
+type EVPNRouteCount struct {
+	// RouteType is the EVPN route type.
+	RouteType EVPNRouteType `json:"routeType"`
+
+	// Count is the number of routes of this type.
+	// +optional
+	Count uint64 `json:"count,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -444,3 +444,5 @@ Renovate runs weekly (Monday before 6am ET). k8s core libraries update monthly. 
 - `GOOS=linux` is required when running `go vet` or `go test` locally (the task targets set this). Some types have Linux-specific constraints.
 - `CLAUDE.md` is a symlink. Edit `AGENTS.md` directly; attempts to edit through the symlink will fail.
 - The VRF `BGPVRFInstanceStatus.Routers` field uses `+listType=map +listMapKey=routerName` — different from the standard `+listMapKey=type` used for conditions.
+- `BGPPeerStatus` carries operational metrics: `lastStateChange`, `uptime`, `afiSafiStats` (per-AFI/SAFI prefix counts), and `messagesSent`/`messagesReceived` counters. The controller computes `uptime` from `lastStateChange`.
+- `BGPVRFInstanceStatus` includes `evpnRouteCounts` (per-route-type counts) and has its own condition type constants (`ConditionTypeReady`, `ConditionTypeAccepted`) defined in `vrf_types.go`.

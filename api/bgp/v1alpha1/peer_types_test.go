@@ -553,3 +553,131 @@ func TestBGPPeerNewFieldsDeepCopy(t *testing.T) {
 		t.Errorf("RouteMapOut mutated via copy: got %q, want %q", peer.Spec.RouteMapOut, "evpn-export")
 	}
 }
+
+// TestBGPPeerStatusNewFieldsJSONRoundTrip verifies the new status fields
+// survive JSON serialization and deserialization.
+func TestBGPPeerStatusNewFieldsJSONRoundTrip(t *testing.T) {
+	now := metav1.Now()
+	status := BGPPeerStatus{
+		ObservedGeneration:  5,
+		SessionState:        BGPPeerStateEstablished,
+		LastEstablishedTime: &now,
+		LastStateChange:     &now,
+		Uptime:              &metav1.Duration{Duration: 3600000000000}, // 1h
+		MessagesSent:        1500,
+		MessagesReceived:    1480,
+		AFISAFIStats: []BGPPeerAFISAFIStats{
+			{AFI: AFIIPv4, SAFI: SAFIUnicast, PrefixesReceived: 100, PrefixesAdvertised: 95},
+			{AFI: AFIIPv6, SAFI: SAFIUnicast, PrefixesReceived: 50, PrefixesAdvertised: 48},
+		},
+	}
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var got BGPPeerStatus
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if got.ObservedGeneration != 5 {
+		t.Errorf("ObservedGeneration: got %d, want 5", got.ObservedGeneration)
+	}
+	if got.SessionState != BGPPeerStateEstablished {
+		t.Errorf("SessionState: got %q, want %q", got.SessionState, BGPPeerStateEstablished)
+	}
+	if got.LastStateChange == nil {
+		t.Fatal("LastStateChange is nil")
+	}
+	if got.MessagesSent != 1500 {
+		t.Errorf("MessagesSent: got %d, want 1500", got.MessagesSent)
+	}
+	if got.MessagesReceived != 1480 {
+		t.Errorf("MessagesReceived: got %d, want 1480", got.MessagesReceived)
+	}
+	if len(got.AFISAFIStats) != 2 {
+		t.Fatalf("AFISAFIStats count: got %d, want 2", len(got.AFISAFIStats))
+	}
+	if got.AFISAFIStats[0].PrefixesReceived != 100 {
+		t.Errorf("AFISAFIStats[0].PrefixesReceived: got %d, want 100", got.AFISAFIStats[0].PrefixesReceived)
+	}
+	if got.AFISAFIStats[1].PrefixesAdvertised != 48 {
+		t.Errorf("AFISAFIStats[1].PrefixesAdvertised: got %d, want 48", got.AFISAFIStats[1].PrefixesAdvertised)
+	}
+}
+
+// TestBGPPeerStatusNewFieldsJSONKeys verifies the JSON key names for the new
+// status fields are present when set to non-zero values.
+func TestBGPPeerStatusNewFieldsJSONKeys(t *testing.T) {
+	status := BGPPeerStatus{
+		SessionState:     BGPPeerStateEstablished,
+		LastStateChange:  &metav1.Time{},
+		Uptime:           &metav1.Duration{},
+		MessagesSent:     100,
+		MessagesReceived: 200,
+		AFISAFIStats: []BGPPeerAFISAFIStats{
+			{AFI: AFIIPv4, SAFI: SAFIUnicast},
+		},
+	}
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	for _, key := range []string{"lastStateChange", "uptime", "messagesSent", "messagesReceived", "afiSafiStats"} {
+		raw, ok := m[key]
+		if !ok {
+			t.Fatalf("expected JSON key %q not found", key)
+		}
+		if key == "afiSafiStats" {
+			arr, ok := raw.([]any)
+			if !ok {
+				t.Errorf("expected %q to be an array, got %T", key, raw)
+			} else if len(arr) != 1 {
+				t.Errorf("expected %q array length 1, got %d", key, len(arr))
+			}
+		}
+	}
+}
+
+// TestBGPPeerStatusNewFieldsDeepCopy verifies DeepCopy handles the new status
+// fields correctly.
+func TestBGPPeerStatusNewFieldsDeepCopy(t *testing.T) {
+	now := metav1.Now()
+	orig := &BGPPeerStatus{
+		ObservedGeneration: 1,
+		SessionState:       BGPPeerStateEstablished,
+		LastStateChange:    &now,
+		Uptime:             &metav1.Duration{Duration: 3600000000000},
+		MessagesSent:       1000,
+		MessagesReceived:   999,
+		AFISAFIStats: []BGPPeerAFISAFIStats{
+			{AFI: AFIIPv4, SAFI: SAFIUnicast, PrefixesReceived: 50, PrefixesAdvertised: 45},
+			{AFI: AFIIPv6, SAFI: SAFIUnicast, PrefixesReceived: 25, PrefixesAdvertised: 20},
+		},
+	}
+
+	copied := orig.DeepCopy()
+
+	copied.SessionState = BGPPeerStateIdle
+	copied.MessagesSent = 9999
+	copied.AFISAFIStats[0].PrefixesReceived = 0
+
+	if orig.SessionState != BGPPeerStateEstablished {
+		t.Errorf("SessionState mutated via copy: got %q, want %q", orig.SessionState, BGPPeerStateEstablished)
+	}
+	if orig.MessagesSent != 1000 {
+		t.Errorf("MessagesSent mutated via copy: got %d, want 1000", orig.MessagesSent)
+	}
+	if orig.AFISAFIStats[0].PrefixesReceived != 50 {
+		t.Errorf("AFISAFIStats[0].PrefixesReceived mutated via copy: got %d, want 50", orig.AFISAFIStats[0].PrefixesReceived)
+	}
+}

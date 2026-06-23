@@ -3,8 +3,8 @@ package v1alpha1
 import (
 	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // BGPPeerState represents the BGP Finite State Machine state of a session.
@@ -192,12 +192,53 @@ type BGPPeerStatus struct {
 	// +optional
 	LastEstablishedTime *metav1.Time `json:"lastEstablishedTime,omitempty"`
 
+	// LastStateChange is the timestamp of the most recent session state change.
+	// +optional
+	LastStateChange *metav1.Time `json:"lastStateChange,omitempty"`
+
+	// Uptime is the duration the session has been in its current state.
+	// Computed as time.Since(LastStateChange) by the controller.
+	// +optional
+	Uptime *metav1.Duration `json:"uptime,omitempty"`
+
+	// AFISAFIStats holds per-address-family statistics for this peer.
+	// +listType=map
+	// +listMapKey=afi
+	// +optional
+	AFISAFIStats []BGPPeerAFISAFIStats `json:"afiSafiStats,omitempty"`
+
+	// MessagesSent is the total number of BGP messages sent to this peer.
+	// +optional
+	MessagesSent uint64 `json:"messagesSent,omitempty"`
+
+	// MessagesReceived is the total number of BGP messages received from this peer.
+	// +optional
+	MessagesReceived uint64 `json:"messagesReceived,omitempty"`
+
 	// Conditions contains the standard conditions for this resource.
 	//
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// BGPPeerAFISAFIStats holds per-address-family statistics for a BGP peer.
+type BGPPeerAFISAFIStats struct {
+	// AFI is the address family indicator.
+	AFI AFI `json:"afi"`
+
+	// SAFI is the subsequent address family indicator.
+	SAFI SAFI `json:"safi"`
+
+	// PrefixesReceived is the number of prefixes received in this address family.
+	// +optional
+	PrefixesReceived uint64 `json:"prefixesReceived,omitempty"`
+
+	// PrefixesAdvertised is the number of prefixes advertised to this peer
+	// in this address family.
+	// +optional
+	PrefixesAdvertised uint64 `json:"prefixesAdvertised,omitempty"`
 }
 
 // +kubebuilder:object:root=true

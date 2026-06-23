@@ -45,6 +45,7 @@ All resources are **Namespaced**.
 | [BGPPeer](#bgppeer) | `bgppr` | `routerRef` XOR `routerSelector` |
 | [BGPAdvertisement](#bgpadvertisement) | `bgpadv` | `routerRef` only |
 | [BGPPolicy](#bgppolicy) | `bgpp` | `routerRef` XOR `routerSelector` |
+| [BGPVRFInstance](#bgpvrfinstance) | `bgpvrf` | `routerRef` XOR `routerSelector` |
 
 ---
 
@@ -195,12 +196,26 @@ spec:
 
 #### Status
 
-| Field                 | Type                 | Description                                          |
-|-----------------------|----------------------|------------------------------------------------------|
-| `observedGeneration`  | `int64`              | Last spec generation reflected in this status.       |
-| `sessionState`        | `string`             | Current BGP FSM state.                               |
-| `lastEstablishedTime` | `Time`               | Timestamp of the most recent Established transition. |
-| `conditions`          | `[]metav1.Condition` | Top-level conditions.                                |
+| Field                 | Type                   | Description                                          |
+|-----------------------|------------------------|------------------------------------------------------|
+| `observedGeneration`  | `int64`                | Last spec generation reflected in this status.       |
+| `sessionState`        | `string`               | Current BGP FSM state.                               |
+| `lastEstablishedTime` | `Time`                 | Timestamp of the most recent Established transition. |
+| `lastStateChange`     | `Time`                 | Timestamp of the most recent session state change.   |
+| `uptime`              | `Duration`             | Duration the session has been in its current state.  |
+| `afiSafiStats`        | `[]BGPPeerAFISAFIStats` | Per-address-family statistics.                      |
+| `messagesSent`        | `uint64`               | Total BGP messages sent to this peer.                |
+| `messagesReceived`    | `uint64`               | Total BGP messages received from this peer.          |
+| `conditions`          | `[]metav1.Condition`   | Top-level conditions.                                |
+
+**BGPPeerAFISAFIStats**
+
+| Field                | Type   | Description                                      |
+|----------------------|--------|--------------------------------------------------|
+| `afi`                | `string` | Address family indicator.                       |
+| `safi`               | `string` | Subsequent address family indicator.             |
+| `prefixesReceived`   | `uint64` | Number of prefixes received in this AFI/SAFI.  |
+| `prefixesAdvertised` | `uint64` | Number of prefixes advertised in this AFI/SAFI.|
 
 **Session State** (string enum)
 
@@ -600,6 +615,74 @@ spec:
       match:
         any: true
       action: deny
+```
+
+---
+
+### BGPVRFInstance
+
+`BGPVRFInstance` configures an L2VPN EVPN VRF on matched `BGPRouter` instances.
+The referenced `BGPRouter` must have `l2vpn/evpn` in its `addressFamilies`.
+
+#### Spec
+
+| Field                    | Type             | Required | Description                                         |
+|--------------------------|------------------|----------|-----------------------------------------------------|
+| `routerRef`              | `RouterRef`      | Conditional | Direct reference to a single BGPRouter. Mutually exclusive with `routerSelector`. |
+| `routerSelector`         | `RouterSelector` | Conditional | Label selector for BGPRouter resources. Mutually exclusive with `routerRef`. |
+| `routeDistinguisher`     | `string`         | Yes      | VRF route distinguisher in `ASN:NN` or `IP:NN` format. |
+| `importRouteTargets`     | `[]RouteTarget`  | Yes      | Route targets for importing routes into this VRF. Minimum 1. |
+| `exportRouteTargets`     | `[]RouteTarget`  | Yes      | Route targets for exporting routes from this VRF. Minimum 1. |
+
+#### Status
+
+| Field                | Type                        | Description                                    |
+|----------------------|-----------------------------|------------------------------------------------|
+| `conditions`         | `[]metav1.Condition`        | Top-level conditions.                          |
+| `routers`            | `[]RouterStatus`            | Per-router reconciliation status.              |
+| `evpnRouteCounts`    | `[]EVPNRouteCount`          | Total EVPN routes per route type.              |
+
+**EVPNRouteCount**
+
+| Field       | Type               | Description                          |
+|-------------|--------------------|--------------------------------------|
+| `routeType` | `EVPNRouteType`    | EVPN route type (RFC 7432).          |
+| `count`     | `uint64`           | Number of routes of this type.       |
+
+**EVPNRouteType** (string enum)
+
+| Value                              | RFC 7432 Type | Description                  |
+|------------------------------------|--------------|------------------------------|
+| `inclusiveMulticastEthernetTag`    | Type 1       | BUM traffic distribution     |
+| `macIPAdvertisement`               | Type 2       | Host MAC/IP reachability     |
+| `iPPrefixAdvertisement`            | Type 3       | L3 IP prefix distribution    |
+| `stickyMACAddress`                 | Type 4       | Sticky MAC address           |
+| `iPv6PrefixAdvertisement`          | Type 5       | IPv6 L3 route distribution   |
+
+**BGPVRFInstance Conditions**
+
+| Type       | Required | Meaning when True                                              |
+|------------|----------|----------------------------------------------------------------|
+| `Ready`    | Required | VRF is fully configured and active on its target routers.      |
+| `Accepted` | Required | VRF config has been accepted by the runtime.                   |
+
+#### Example
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPVRFInstance
+metadata:
+  name: tenant-alpha
+  namespace: default
+spec:
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: tenant
+  routeDistinguisher: "10.255.0.1:100"
+  importRouteTargets:
+    - value: "65000:100"
+  exportRouteTargets:
+    - value: "65000:100"
 ```
 
 ---
