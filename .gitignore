@@ -1,8 +1,58 @@
+# ── Binaries & build artifacts ──────────────────────────────────────
 bin/
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.test
 *.out
 
-# E2E test artifacts
+# ── Go build cache / coverage ───────────────────────────────────────
+coverage.out
+coverage.txt
+*.coverprofile
+go.build/
+
+# ── Generated files (regenerate with `task generate` / `task manifests`)
+api/**/zz_generated.deepcopy.go
+config/crd/
+
+# ── IDE ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+*.sublime-project
+*.sublime-workspace
+
+# ── macOS ───────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Windows ─────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Linux / file-manager trash ──────────────────────────────────────
+.Trash-*/
+
+# ── E2E test artifacts ─────────────────────────────────────────────
 test/e2e/.kubeconfig
 test/e2e/.kubeconfig.lock
+test/e2e/kind-cluster*
+
+# ── Task / build cache ─────────────────────────────────────────────
+.task/
+
+# ── Environment / secrets ──────────────────────────────────────────
+.env
+.env.*
+!.env.example
+.local
+
