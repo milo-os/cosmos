@@ -106,12 +106,12 @@ func (in *BGPAdvertisementSpec) DeepCopyInto(out *BGPAdvertisementSpec) {
 	out.AddressFamily = in.AddressFamily
 	if in.Prefixes != nil {
 		in, out := &in.Prefixes, &out.Prefixes
-		*out = make([]string, len(*in))
+		*out = make([]Prefix, len(*in))
 		copy(*out, *in)
 	}
 	if in.Communities != nil {
 		in, out := &in.Communities, &out.Communities
-		*out = make([]string, len(*in))
+		*out = make([]Community, len(*in))
 		copy(*out, *in)
 	}
 	if in.LocalPreference != nil {

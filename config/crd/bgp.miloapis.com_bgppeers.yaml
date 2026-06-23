@@ -222,6 +222,12 @@ spec:
                 x-kubernetes-validations:
                 - message: keepaliveTime must be 0 or <= 30s
                   rule: duration(self) == duration('0s') || duration(self) <= duration('30s')
+              multiSession:
+                description: |-
+                  MultiSession enables BFD over MP-BGP (RFC 8935). When true, each
+                  AFI/SAFI negotiates its own BFD session independently. When false
+                  (default), a single BFD session covers all AFI/SAFIs.
+                type: boolean
               nextHopSelf:
                 description: |-
                   NextHopSelf controls next-hop behavior for iBGP sessions.
@@ -243,6 +249,18 @@ spec:
                 maximum: 4294967295
                 minimum: 0
                 type: integer
+              routeMapIn:
+                description: |-
+                  RouteMapIn is the name of a BGPPolicy term set applied to routes
+                  received from this peer (import direction). The name must match
+                  a BGPPolicy resource in the same namespace.
+                type: string
+              routeMapOut:
+                description: |-
+                  RouteMapOut is the name of a BGPPolicy term set applied to routes
+                  advertised to this peer (export direction). The name must match
+                  a BGPPolicy resource in the same namespace.
+                type: string
               routerRef:
                 description: |-
                   RouterRef targets a single BGPRouter by name.
