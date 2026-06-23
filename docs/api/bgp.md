@@ -364,27 +364,87 @@ more `BGPRouter` instances via `routerRef` or `routerSelector`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `any` | `bool` | When true, matches all routes. Mutually exclusive with other match fields. |
-| `addressFamilies` | `[]AddressFamily` | Constrains match to specific AFI/SAFI combinations. If empty, all address families are matched. |
+| `any` | `bool` | When true, matches all routes. Mutually exclusive with all other match fields. |
+| `addressFamilies` | `[]AddressFamily` | Constrains match to specific AFI/SAFI combinations. If empty, all address families are matched. Max 8. |
+| `prefixList` | `[]string` | Match routes whose prefix matches one of the given CIDR blocks. Max 256. |
+| `asPathFilter` | `ASPathFilter` | Match routes by AS path regular expression. |
+| `communityMatch` | `[]string` | Match routes carrying any of the listed BGP communities. Format: `ASN:NN` or `IP:NN`. Max 32. |
+| `evpnRouteType` | `[]EVPNRouteType` | Match specific EVPN route types. Only meaningful with `l2vpn/evpn`. Max 5. |
+| `vni` | `*uint32` | Match routes by VNI. Range: 0–16777215. |
+| `macAddress` | `*string` | Match EVPN Type-2 routes by MAC address. Format: `aa:bb:cc:dd:ee:ff`. |
+| `ipPrefix` | `*string` | Match routes by exact IP prefix (CIDR notation). |
+| `localPreference` | `*uint32` | Match routes by LOCAL_PREF value. Range: 0–4294967295. |
+| `med` | `*uint32` | Match routes by MED value. Range: 0–4294967295. |
+
+**ASPathFilter**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pattern` | `string` | Regular expression matched against the AS path (space-separated ASNs). Required. |
+| `matchType` | `string` | How the pattern is applied. Enum: `full`, `contains`. Default: `contains`. |
+
+**EVPNRouteType** (string enum)
+
+| Value | RFC 7432 Type | Description |
+|-------|--------------|-------------|
+| `inclusiveMulticastEthernetTag` | Type 1 | BUM traffic distribution |
+| `macIPAdvertisement` | Type 2 | Host MAC/IP reachability |
+| `iPPrefixAdvertisement` | Type 3 | L3 IP prefix distribution |
+| `stickyMACAddress` | Type 4 | Sticky MAC address (MAC mobility) |
+| `iPv6PrefixAdvertisement` | Type 5 | IPv6 L3 route distribution |
 
 **PolicySetActions**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `communities` | `CommunitySet` | Community add/remove operations. |
-| `localPreference` | `*uint32` | Sets LOCAL_PREF. Only meaningful on import (iBGP) or export to iBGP peers. |
+| `communities` | `CommunitySet` | Standard community add/remove operations. |
+| `localPreference` | `*uint32` | Sets LOCAL_PREF. Only meaningful on import (iBGP) or export to iBGP peers. Range: 0–4294967295. |
+| `origin` | `*string` | Sets the BGP origin attribute. Enum: `igp`, `egp`, `incomplete`. |
+| `asPath` | `AsPathSet` | Manipulates the AS path (prepend or replace). |
+| `nextHop` | `NextHopSet` | Overrides the next-hop attribute. |
+| `extCommunities` | `ExtendedCommunitySet` | Extended community add/remove operations. |
+| `metric` | `*uint32` | Sets MED (Multi-Exit Discriminator). Range: 0–4294967295. |
+| `color` | `*uint32` | Sets the SRv6 policy color for path selection. Range: 0–4294967295. |
+| `srv6EndpointBehavior` | `*string` | Sets the SRv6 endpoint behavior on a route (e.g., `End`, `End.X`, `End.DT6`). |
 
 **CommunitySet**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `add` | `[]string` | Communities to attach (e.g., `"65000:100"`). |
-| `remove` | `[]string` | Communities to strip. |
+| `add` | `[]string` | Communities to attach (e.g., `"65000:100"`). Max 32. |
+| `remove` | `[]string` | Communities to strip. Max 32. |
+
+**AsPathSet**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `prepend` | `*uint32` | Number of times to prepend the local ASN (or `asn`) to the AS path. Range: 1–10. Mutually exclusive with `replace`. |
+| `asn` | `*int64` | AS number to prepend. Defaults to local ASN when `prepend` is set. |
+| `replace` | `[]int64` | Replaces the entire AS path with the given list. Mutually exclusive with `prepend`. Max 32. |
+
+**NextHopSet**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `self` | `*bool` | Sets the next-hop to the local router's BGP peer address. Mutually exclusive with `address`. |
+| `address` | `*string` | Sets the next-hop to a specific IP address. Mutually exclusive with `self`. |
+
+**ExtendedCommunitySet**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `add` | `[]string` | Extended communities to attach. Max 32. |
+| `remove` | `[]string` | Extended communities to strip. Max 32. |
 
 #### Validation
 
 - Term `sequence` numbers must be unique within a policy (CEL enforced).
 - `set` actions must not be specified on `deny` terms (CEL enforced).
+- When `any` is `true`, all other match fields must be empty (CEL enforced).
+- `asPath.prepend` and `asPath.replace` are mutually exclusive (CEL enforced).
+- `nextHop.self` and `nextHop.address` are mutually exclusive (CEL enforced).
+- `prefixList` entries must be valid CIDR notation (CEL enforced).
+- `communityMatch` entries must be in `ASN:NN` or `IP:NN` format (CEL enforced).
 
 #### Status
 
@@ -456,6 +516,87 @@ spec:
         communities:
           add: ["65001:200"]
     - sequence: 20
+      match:
+        any: true
+      action: deny
+```
+
+```yaml
+# EVPN selective import — accept MAC/IP and IP-prefix routes for VNI 10100
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPolicy
+metadata:
+  name: evpn-vni-10100-import
+  namespace: default
+spec:
+  routerSelector:
+    matchLabels:
+      bgp.miloapis.com/role: tenant
+  direction: import
+  terms:
+    - sequence: 10
+      match:
+        addressFamilies:
+          - afi: l2vpn
+            safi: evpn
+        evpnRouteType:
+          - macIPAdvertisement
+        vni: 10100
+      action: permit
+      set:
+        communities:
+          add: ["65000:10100"]
+        extCommunities:
+          add: ["65000:10100"]
+    - sequence: 20
+      match:
+        addressFamilies:
+          - afi: l2vpn
+            safi: evpn
+        evpnRouteType:
+          - iPPrefixAdvertisement
+        vni: 10100
+      action: permit
+    - sequence: 9999
+      match:
+        any: true
+      action: deny
+```
+
+```yaml
+# Export policy — tag routes by AS path and set SRv6 color for traffic engineering
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPolicy
+metadata:
+  name: srv6-te-export
+  namespace: default
+spec:
+  routerRef:
+    name: leaf-1-underlay
+  direction: export
+  terms:
+    - sequence: 10
+      match:
+        prefixList:
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+      action: permit
+      set:
+        color: 100
+        srv6EndpointBehavior: "End.DT6"
+        asPath:
+          prepend: 2
+    - sequence: 20
+      match:
+        asPathFilter:
+          pattern: "^65001"
+          matchType: contains
+      action: permit
+      set:
+        nextHop:
+          self: true
+        origin: igp
+    - sequence: 9999
       match:
         any: true
       action: deny

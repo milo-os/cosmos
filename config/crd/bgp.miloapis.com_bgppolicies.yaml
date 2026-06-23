@@ -184,8 +184,142 @@ spec:
                           description: Any matches all routes. When true, all other
                             match fields are ignored.
                           type: boolean
+                        asPathFilter:
+                          description: |-
+                            ASPathFilter matches routes by AS path using a regex pattern.
+                            The pattern is matched against the full AS path string (space-separated ASNs).
+                          properties:
+                            matchType:
+                              allOf:
+                              - enum:
+                                - full
+                                - contains
+                              - enum:
+                                - full
+                                - contains
+                              default: contains
+                              description: |-
+                                MatchType determines whether the pattern must match the full path
+                                or can match a substring. Default: "contains".
+                              type: string
+                            pattern:
+                              description: |-
+                                Pattern is a regular expression matched against the AS path.
+                                The AS path is represented as a space-separated string of ASNs.
+                              maxLength: 256
+                              minLength: 1
+                              type: string
+                          required:
+                          - pattern
+                          type: object
+                        communityMatch:
+                          description: |-
+                            CommunityMatch matches routes by BGP community.
+                            Each entry is a community string in ASN:NN or IP:NN format.
+                          items:
+                            maxLength: 32
+                            type: string
+                          maxItems: 32
+                          type: array
+                          x-kubernetes-validations:
+                          - message: each communityMatch entry must be in ASN:NN or
+                              IP:NN format
+                            rule: self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$')
+                              || c.matches('^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}:[0-9]{1,10}$'))
+                        evpnRouteType:
+                          description: |-
+                            EVPNRouteType matches specific EVPN route types.
+                            Only meaningful when l2vpn/evpn address family is configured.
+                          items:
+                            description: EVPNRouteType is an EVPN route type per RFC
+                              7432.
+                            enum:
+                            - inclusiveMulticastEthernetTag
+                            - macIPAdvertisement
+                            - iPPrefixAdvertisement
+                            - stickyMACAddress
+                            - iPv6PrefixAdvertisement
+                            type: string
+                          maxItems: 5
+                          type: array
+                        ipPrefix:
+                          description: IPPrefix matches routes by exact IP prefix
+                            (CIDR notation).
+                          maxLength: 43
+                          type: string
+                          x-kubernetes-validations:
+                          - message: ipPrefix must be a valid IPv4 or IPv6 CIDR
+                            rule: isCIDR(self)
+                        localPreference:
+                          description: LocalPreference matches routes by BGP LOCAL_PREF
+                            value.
+                          format: int32
+                          maximum: 4294967295
+                          minimum: 0
+                          type: integer
+                        macAddress:
+                          description: |-
+                            MACAddress matches MAC-IP routes (EVPN Type-2) by MAC address.
+                            Format: colon-separated hex bytes (e.g., "aa:bb:cc:dd:ee:ff").
+                          pattern: ^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$
+                          type: string
+                        med:
+                          description: MED matches routes by Multi-Exit Discriminator
+                            value.
+                          format: int32
+                          maximum: 4294967295
+                          minimum: 0
+                          type: integer
+                        prefixList:
+                          description: |-
+                            PrefixList constrains the match to routes whose prefix matches one of
+                            the given CIDR blocks. Each entry must be a valid IPv4 or IPv6 CIDR.
+                          items:
+                            maxLength: 43
+                            type: string
+                          maxItems: 256
+                          type: array
+                          x-kubernetes-validations:
+                          - message: each prefixList entry must be a valid IPv4 or
+                              IPv6 CIDR
+                            rule: self.all(p, isCIDR(p))
+                        vni:
+                          description: |-
+                            VNI matches routes by VNI (VXLAN Network Identifier).
+                            Range: 0–16777215 (24-bit VNI).
+                          format: int32
+                          maximum: 16777215
+                          minimum: 0
+                          type: integer
                       type: object
                       x-kubernetes-validations:
+                      - message: prefixList must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.prefixList)
+                          || self.prefixList.size() == 0'
+                      - message: asPathFilter must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.asPathFilter)
+                          || self.asPathFilter.pattern.size() == 0'
+                      - message: communityMatch must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.communityMatch)
+                          || self.communityMatch.size() == 0'
+                      - message: evpnRouteType must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.evpnRouteType)
+                          || self.evpnRouteType.size() == 0'
+                      - message: vni must be unset when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.vni) || self.vni
+                          == 0'
+                      - message: macAddress must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.macAddress)
+                          || self.macAddress.size() == 0'
+                      - message: ipPrefix must be empty when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.ipPrefix)
+                          || self.ipPrefix.size() == 0'
+                      - message: localPreference must be unset when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.localPreference)
+                          || self.localPreference == 0'
+                      - message: med must be unset when any is true
+                        rule: '!has(self.any) || !self.any || !has(self.med) || self.med
+                          == 0'
                       - message: addressFamilies must be empty when any is true
                         rule: '!has(self.any) || !self.any || !has(self.addressFamilies)
                           || self.addressFamilies.size() == 0'
@@ -202,6 +336,44 @@ spec:
                         Set defines mutations applied when action is "permit".
                         Must not be set when action is "deny".
                       properties:
+                        asPath:
+                          description: AsPath manipulates the AS path (prepend or
+                            replace).
+                          properties:
+                            asn:
+                              description: |-
+                                ASN is the AS number to prepend (used when prepend is set).
+                                Defaults to the local ASN if not specified.
+                              format: int64
+                              type: integer
+                            prepend:
+                              description: Prepend adds an ASN to the AS path N times.
+                              format: int32
+                              maximum: 10
+                              minimum: 1
+                              type: integer
+                            replace:
+                              description: |-
+                                Replace replaces the entire AS path with the given list.
+                                Mutually exclusive with prepend.
+                              items:
+                                format: int64
+                                type: integer
+                              maxItems: 32
+                              type: array
+                          type: object
+                          x-kubernetes-validations:
+                          - message: prepend and replace are mutually exclusive
+                            rule: '!has(self.prepend) || !has(self.replace) || self.replace.size()
+                              == 0'
+                        color:
+                          description: |-
+                            Color sets the SRv6 policy color for path selection.
+                            Range: 0–4294967295 (32-bit color).
+                          format: int32
+                          maximum: 4294967295
+                          minimum: 0
+                          type: integer
                         communities:
                           description: Communities defines community add/remove operations.
                           properties:
@@ -220,6 +392,37 @@ spec:
                               maxItems: 32
                               type: array
                           type: object
+                        extCommunities:
+                          description: |-
+                            ExtCommunities defines extended community add/remove operations.
+                            Each entry must be in a valid extended community format (ASN:NN, IP:NN,
+                            or type-specific like "rt:65000:100").
+                          properties:
+                            add:
+                              description: Add is a list of extended communities to
+                                attach.
+                              items:
+                                maxLength: 64
+                                type: string
+                              maxItems: 32
+                              type: array
+                              x-kubernetes-validations:
+                              - message: each extCommunity entry must contain only
+                                  valid characters (digits, letters, colons, dots)
+                                rule: self.all(c, c.matches('^[0-9a-fA-F:.]+$'))
+                            remove:
+                              description: Remove is a list of extended communities
+                                to strip.
+                              items:
+                                maxLength: 64
+                                type: string
+                              maxItems: 32
+                              type: array
+                              x-kubernetes-validations:
+                              - message: each extCommunity entry must contain only
+                                  valid characters (digits, letters, colons, dots)
+                                rule: self.all(c, c.matches('^[0-9a-fA-F:.]+$'))
+                          type: object
                         localPreference:
                           description: |-
                             LocalPreference sets the LOCAL_PREF attribute.
@@ -228,6 +431,44 @@ spec:
                           maximum: 4294967295
                           minimum: 0
                           type: integer
+                        metric:
+                          description: Metric sets the MED (Multi-Exit Discriminator)
+                            attribute.
+                          format: int32
+                          maximum: 4294967295
+                          minimum: 0
+                          type: integer
+                        nextHop:
+                          description: NextHop overrides the next-hop attribute.
+                          properties:
+                            address:
+                              description: |-
+                                Address sets the next-hop to a specific IP address.
+                                Mutually exclusive with self.
+                              maxLength: 45
+                              type: string
+                            self:
+                              description: Self sets the next-hop to the local router's
+                                BGP peer address.
+                              type: boolean
+                          type: object
+                          x-kubernetes-validations:
+                          - message: self and address are mutually exclusive
+                            rule: '!has(self.self) || !self.self || !has(self.address)
+                              || self.address.size() == 0'
+                        origin:
+                          description: Origin sets the BGP origin attribute.
+                          enum:
+                          - igp
+                          - egp
+                          - incomplete
+                          type: string
+                        srv6EndpointBehavior:
+                          description: |-
+                            Srv6EndpointBehavior sets the SRv6 endpoint behavior on a route.
+                            Common values: End, End.X, End.DT6, End.B6, End.M.
+                          maxLength: 64
+                          type: string
                       type: object
                   required:
                   - action

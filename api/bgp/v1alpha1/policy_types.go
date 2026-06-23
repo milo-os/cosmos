@@ -91,6 +91,15 @@ type BGPPolicyTerm struct {
 
 // BGPPolicyMatch defines the conditions under which a policy term fires.
 //
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.prefixList) || self.prefixList.size() == 0",message="prefixList must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.asPathFilter) || self.asPathFilter.pattern.size() == 0",message="asPathFilter must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.communityMatch) || self.communityMatch.size() == 0",message="communityMatch must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.evpnRouteType) || self.evpnRouteType.size() == 0",message="evpnRouteType must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.vni) || self.vni == 0",message="vni must be unset when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.macAddress) || self.macAddress.size() == 0",message="macAddress must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.ipPrefix) || self.ipPrefix.size() == 0",message="ipPrefix must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.localPreference) || self.localPreference == 0",message="localPreference must be unset when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.med) || self.med == 0",message="med must be unset when any is true"
 // +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.addressFamilies) || self.addressFamilies.size() == 0",message="addressFamilies must be empty when any is true"
 type BGPPolicyMatch struct {
 	// Any matches all routes. When true, all other match fields are ignored.
@@ -102,7 +111,115 @@ type BGPPolicyMatch struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=8
 	AddressFamilies []AddressFamily `json:"addressFamilies,omitempty"`
+
+	// PrefixList constrains the match to routes whose prefix matches one of
+	// the given CIDR blocks. Each entry must be a valid IPv4 or IPv6 CIDR.
+	// +optional
+	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:items:MaxLength=43
+	// +kubebuilder:validation:XValidation:rule="self.all(p, isCIDR(p))",message="each prefixList entry must be a valid IPv4 or IPv6 CIDR"
+	PrefixList []string `json:"prefixList,omitempty"`
+
+	// ASPathFilter matches routes by AS path using a regex pattern.
+	// The pattern is matched against the full AS path string (space-separated ASNs).
+	// +optional
+	ASPathFilter *ASPathFilter `json:"asPathFilter,omitempty"`
+
+	// CommunityMatch matches routes by BGP community.
+	// Each entry is a community string in ASN:NN or IP:NN format.
+	// +optional
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=32
+	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="each communityMatch entry must be in ASN:NN or IP:NN format"
+	CommunityMatch []string `json:"communityMatch,omitempty"`
+
+	// EVPNRouteType matches specific EVPN route types.
+	// Only meaningful when l2vpn/evpn address family is configured.
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	EVPNRouteType []EVPNRouteType `json:"evpnRouteType,omitempty"`
+
+	// VNI matches routes by VNI (VXLAN Network Identifier).
+	// Range: 0–16777215 (24-bit VNI).
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=16777215
+	VNI *uint32 `json:"vni,omitempty"`
+
+	// MACAddress matches MAC-IP routes (EVPN Type-2) by MAC address.
+	// Format: colon-separated hex bytes (e.g., "aa:bb:cc:dd:ee:ff").
+	// +optional
+	// +kubebuilder:validation:Pattern=`^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$`
+	MACAddress *string `json:"macAddress,omitempty"`
+
+	// IPPrefix matches routes by exact IP prefix (CIDR notation).
+	// +optional
+	// +kubebuilder:validation:MaxLength=43
+	// +kubebuilder:validation:XValidation:rule="isCIDR(self)",message="ipPrefix must be a valid IPv4 or IPv6 CIDR"
+	IPPrefix *string `json:"ipPrefix,omitempty"`
+
+	// LocalPreference matches routes by BGP LOCAL_PREF value.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	LocalPreference *uint32 `json:"localPreference,omitempty"`
+
+	// MED matches routes by Multi-Exit Discriminator value.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	MED *uint32 `json:"med,omitempty"`
 }
+
+// ASPathFilter matches BGP routes by AS path using a regex pattern.
+type ASPathFilter struct {
+	// Pattern is a regular expression matched against the AS path.
+	// The AS path is represented as a space-separated string of ASNs.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	Pattern string `json:"pattern"`
+
+	// MatchType determines whether the pattern must match the full path
+	// or can match a substring. Default: "contains".
+	// +kubebuilder:validation:Enum=full;contains
+	// +kubebuilder:default=contains
+	MatchType ASPathMatchType `json:"matchType,omitempty"`
+}
+
+// ASPathMatchType determines how an AS path filter pattern is applied.
+//
+// +kubebuilder:validation:Enum=full;contains
+type ASPathMatchType string
+
+const (
+	// ASPathMatchFull requires the pattern to match the entire AS path.
+	ASPathMatchFull ASPathMatchType = "full"
+
+	// ASPathMatchContains requires the pattern to match a substring of the AS path.
+	ASPathMatchContains ASPathMatchType = "contains"
+)
+
+// EVPNRouteType is an EVPN route type per RFC 7432.
+//
+// +kubebuilder:validation:Enum=inclusiveMulticastEthernetTag;macIPAdvertisement;iPPrefixAdvertisement;stickyMACAddress;iPv6PrefixAdvertisement
+type EVPNRouteType string
+
+const (
+	// EVPNRouteTypeInclusiveMulticastEthernetTag is Type-1: Inclusive Multicast Ethernet Tag route.
+	EVPNRouteTypeInclusiveMulticastEthernetTag EVPNRouteType = "inclusiveMulticastEthernetTag"
+
+	// EVPNRouteTypeMACIPAdvertisement is Type-2: MAC-IP Advertisement route.
+	EVPNRouteTypeMACIPAdvertisement EVPNRouteType = "macIPAdvertisement"
+
+	// EVPNRouteTypeIPPrefixAdvertisement is Type-3: IP Prefix Advertisement route.
+	EVPNRouteTypeIPPrefixAdvertisement EVPNRouteType = "iPPrefixAdvertisement"
+
+	// EVPNRouteTypeStickyMACAddress is Type-4: Sticky MAC Address route.
+	EVPNRouteTypeStickyMACAddress EVPNRouteType = "stickyMACAddress"
+
+	// EVPNRouteTypeIPv6PrefixAdvertisement is Type-5: IPv6 Prefix Advertisement route.
+	EVPNRouteTypeIPv6PrefixAdvertisement EVPNRouteType = "iPv6PrefixAdvertisement"
+)
 
 // PolicySetActions defines mutations applied when a term matches with action "permit".
 type PolicySetActions struct {
@@ -116,6 +233,96 @@ type PolicySetActions struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=4294967295
 	LocalPreference *uint32 `json:"localPreference,omitempty"`
+
+	// Origin sets the BGP origin attribute.
+	// +optional
+	Origin *BGPOrigin `json:"origin,omitempty"`
+
+	// AsPath manipulates the AS path (prepend or replace).
+	// +optional
+	AsPath *AsPathSet `json:"asPath,omitempty"`
+
+	// NextHop overrides the next-hop attribute.
+	// +optional
+	NextHop *NextHopSet `json:"nextHop,omitempty"`
+
+	// ExtCommunities defines extended community add/remove operations.
+	// Each entry must be in a valid extended community format (ASN:NN, IP:NN,
+	// or type-specific like "rt:65000:100").
+	// +optional
+	ExtCommunities *ExtendedCommunitySet `json:"extCommunities,omitempty"`
+
+	// Metric sets the MED (Multi-Exit Discriminator) attribute.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	Metric *uint32 `json:"metric,omitempty"`
+
+	// Color sets the SRv6 policy color for path selection.
+	// Range: 0–4294967295 (32-bit color).
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	Color *uint32 `json:"color,omitempty"`
+
+	// Srv6EndpointBehavior sets the SRv6 endpoint behavior on a route.
+	// Common values: End, End.X, End.DT6, End.B6, End.M.
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	Srv6EndpointBehavior *string `json:"srv6EndpointBehavior,omitempty"`
+}
+
+// BGPOrigin is the BGP origin attribute per RFC 4271.
+//
+// +kubebuilder:validation:Enum=igp;egp;incomplete
+type BGPOrigin string
+
+const (
+	// BGPOriginIGP indicates the route was learned via an IGP.
+	BGPOriginIGP BGPOrigin = "igp"
+
+	// BGPOriginEGP indicates the route was learned via the EGP protocol.
+	BGPOriginEGP BGPOrigin = "egp"
+
+	// BGPOriginIncomplete indicates the route origin is unknown.
+	BGPOriginIncomplete BGPOrigin = "incomplete"
+)
+
+// AsPathSet defines AS path manipulation operations.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.prepend) || !has(self.replace) || self.replace.size() == 0",message="prepend and replace are mutually exclusive"
+type AsPathSet struct {
+	// Prepend adds an ASN to the AS path N times.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
+	Prepend *uint32 `json:"prepend,omitempty"`
+
+	// ASN is the AS number to prepend (used when prepend is set).
+	// Defaults to the local ASN if not specified.
+	// +optional
+	ASN *int64 `json:"asn,omitempty"`
+
+	// Replace replaces the entire AS path with the given list.
+	// Mutually exclusive with prepend.
+	// +optional
+	// +kubebuilder:validation:MaxItems=32
+	Replace []int64 `json:"replace,omitempty"`
+}
+
+// NextHopSet defines next-hop attribute overrides.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.self) || !self.self || !has(self.address) || self.address.size() == 0",message="self and address are mutually exclusive"
+type NextHopSet struct {
+	// Self sets the next-hop to the local router's BGP peer address.
+	// +optional
+	Self *bool `json:"self,omitempty"`
+
+	// Address sets the next-hop to a specific IP address.
+	// Mutually exclusive with self.
+	// +optional
+	// +kubebuilder:validation:MaxLength=45
+	Address *string `json:"address,omitempty"`
 }
 
 // CommunitySet defines community add and remove operations.
@@ -130,6 +337,23 @@ type CommunitySet struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=32
 	// +kubebuilder:validation:items:MaxLength=24
+	Remove []string `json:"remove,omitempty"`
+}
+
+// ExtendedCommunitySet defines extended community add and remove operations.
+type ExtendedCommunitySet struct {
+	// Add is a list of extended communities to attach.
+	// +optional
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=64
+	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9a-fA-F:.]+$'))",message="each extCommunity entry must contain only valid characters (digits, letters, colons, dots)"
+	Add []string `json:"add,omitempty"`
+
+	// Remove is a list of extended communities to strip.
+	// +optional
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=64
+	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9a-fA-F:.]+$'))",message="each extCommunity entry must contain only valid characters (digits, letters, colons, dots)"
 	Remove []string `json:"remove,omitempty"`
 }
 
