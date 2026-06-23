@@ -214,7 +214,7 @@ spec:
     afi: ipv6
     safi: unicast
   prefixes:
-    - "2001:db8:loopback::1/128"
+    - cidr: "2001:db8:loopback::1/128"
 ```
 
 Apply:

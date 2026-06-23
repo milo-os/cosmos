@@ -286,18 +286,56 @@ spec:
 ### BGPAdvertisement
 
 `BGPAdvertisement` defines routing information to advertise from a single
-`BGPRouter`. Prefixes are specified inline. Only `routerRef` is supported —
-selector fan-out is intentionally omitted to avoid ambiguous prefix attribution.
+`BGPRouter`. Routes can be originated from static CIDR prefixes, redistributed
+routing table entries, or local interface/kernel routes. Only `routerRef` is
+supported — selector fan-out is intentionally omitted to avoid ambiguous prefix
+attribution. At least one of `prefixes`, `redistribute`, or `originateFrom` must
+be specified.
 
 #### Spec
 
-| Field             | Type            | Required | Description                                                |
-|-------------------|-----------------|----------|------------------------------------------------------------|
-| `routerRef`       | `RouterRef`     | Yes      | Direct reference to a single BGPRouter.                    |
-| `addressFamily`   | `AddressFamily` | Yes      | AFI/SAFI for this advertisement.                           |
-| `prefixes`        | `[]string`      | Yes      | CIDR prefixes to advertise. Minimum 1.                     |
-| `communities`     | `[]string`      | No       | BGP communities to attach to advertised prefixes.          |
-| `localPreference` | `*uint32`       | No       | BGP LOCAL_PREF attribute. Only meaningful for iBGP sessions. |
+| Field             | Type                       | Required    | Description                                                                           |
+|-------------------|----------------------------|-------------|---------------------------------------------------------------------------------------|
+| `routerRef`       | `RouterRef`                | Yes         | Direct reference to a single BGPRouter.                                               |
+| `addressFamily`   | `AddressFamily`            | Yes         | AFI/SAFI for this advertisement.                                                      |
+| `prefixes`        | `[]AdvertisedPrefix`       | Conditional | Per-prefix CIDR entries with optional attribute overrides. Max 256.                   |
+| `redistribute`    | `[]RedistributeSource`     | Conditional | Routing table sources to redistribute into BGP. Enum: `static`, `connected`, `kernel`. |
+| `originateFrom`   | `*AdvertisementOriginateFrom` | Conditional | Originate routes from a local interface or kernel table entry.                      |
+| `policyRef`       | `*AdvertisementPolicyRef`  | No          | BGPPolicy to apply as a conditional filter before advertisement.                      |
+| `communities`     | `[]string`                 | No          | Default BGP communities for all prefixes. Per-prefix `communities` overrides this.    |
+| `localPreference` | `*uint32`                  | No          | Default BGP LOCAL_PREF for all prefixes. Per-prefix `localPreference` overrides this. |
+
+**AdvertisedPrefix**
+
+Each entry in `prefixes` is an `AdvertisedPrefix` object. Per-prefix attributes
+replace (not merge with) the advertisement-level defaults for that prefix only.
+
+| Field             | Type       | Required | Description                                                       |
+|-------------------|------------|----------|-------------------------------------------------------------------|
+| `cidr`            | `string`   | Yes      | Network prefix in CIDR notation (e.g., `"2001:db8::/48"`).       |
+| `communities`     | `[]string` | No       | Overrides advertisement-level `communities` for this prefix only. |
+| `localPreference` | `*uint32`  | No       | Overrides advertisement-level `localPreference` for this prefix.  |
+
+**RedistributeSource**
+
+| Value       | Description                                            |
+|-------------|--------------------------------------------------------|
+| `static`    | Statically configured routes.                          |
+| `connected` | Directly connected interface routes.                   |
+| `kernel`    | Routes from the kernel routing table.                  |
+
+**AdvertisementOriginateFrom**
+
+| Field           | Type     | Required    | Description                                                        |
+|-----------------|----------|-------------|--------------------------------------------------------------------|
+| `type`          | `string` | Yes         | Source type. Enum: `interface`, `kernel`.                          |
+| `interfaceName` | `string` | Conditional | Interface name. Required when `type` is `interface`.               |
+
+**AdvertisementPolicyRef**
+
+| Field  | Type     | Required | Description                                   |
+|--------|----------|----------|-----------------------------------------------|
+| `name` | `string` | Yes      | Name of the BGPPolicy within the same namespace. |
 
 #### Status
 
@@ -315,7 +353,9 @@ selector fan-out is intentionally omitted to avoid ambiguous prefix attribution.
 | `Accepted` | Required | Advertisement config accepted by the runtime. |
 | `Advertised` | Required | Prefixes are confirmed as advertised to at least one peer. |
 
-#### Example
+#### Examples
+
+**Static prefixes with per-prefix attributes:**
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
@@ -329,9 +369,73 @@ spec:
   addressFamily:
     afi: ipv6
     safi: unicast
-  prefixes:
-    - "2001:db8:loopback::1/128"
+  communities:
+    - "65000:100"
   localPreference: 100
+  prefixes:
+    - cidr: "2001:db8:loopback::1/128"
+    - cidr: "2001:db8:subnet::/64"
+      communities:
+        - "65000:200"
+      localPreference: 50
+```
+
+**Redistribute connected and static routes:**
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPAdvertisement
+metadata:
+  name: node-1-redistribute
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  addressFamily:
+    afi: ipv4
+    safi: unicast
+  redistribute:
+    - connected
+    - static
+```
+
+**Originate routes from a local interface:**
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPAdvertisement
+metadata:
+  name: node-1-loopback-iface
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  addressFamily:
+    afi: ipv6
+    safi: unicast
+  originateFrom:
+    type: interface
+    interfaceName: lo
+```
+
+**Static prefixes with a conditional export policy:**
+
+```yaml
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPAdvertisement
+metadata:
+  name: node-1-filtered
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  addressFamily:
+    afi: ipv6
+    safi: unicast
+  prefixes:
+    - cidr: "2001:db8:loopback::1/128"
+  policyRef:
+    name: node-1-export-filter
 ```
 
 ---
