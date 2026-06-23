@@ -60,7 +60,7 @@ func (in *AdvertisedPrefix) DeepCopyInto(out *AdvertisedPrefix) {
 	*out = *in
 	if in.Communities != nil {
 		in, out := &in.Communities, &out.Communities
-		*out = make([]string, len(*in))
+		*out = make([]Community, len(*in))
 		copy(*out, *in)
 	}
 	if in.LocalPreference != nil {

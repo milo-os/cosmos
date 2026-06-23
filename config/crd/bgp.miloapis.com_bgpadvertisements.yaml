@@ -173,6 +173,9 @@ spec:
                         Communities overrides the advertisement-level communities for this prefix.
                         When set, replaces (not merges with) the top-level communities for this prefix only.
                       items:
+                        description: Community is a BGP community in ASN:NN or IP:NN
+                          format.
+                        maxLength: 32
                         type: string
                       maxItems: 64
                       type: array

@@ -62,7 +62,7 @@ func TestBGPAdvertisementJSONRoundTrip(t *testing.T) {
 	orig := newTestAdvertisement()
 	orig.Spec.Prefixes = []AdvertisedPrefix{
 		{CIDR: "2001:db8::/48", LocalPreference: ptr(uint32(150))},
-		{CIDR: "10.0.0.0/8", Communities: []string{"65000:200"}},
+		{CIDR: "10.0.0.0/8", Communities: []Community{"65000:200"}},
 	}
 	orig.Spec.Communities = []Community{"65000:100"}
 	orig.Spec.LocalPreference = ptr(uint32(100))
@@ -209,7 +209,7 @@ func TestBGPAdvertisementDeepCopyWithAllFields(t *testing.T) {
 			RouterRef:     RouterRef{Name: "test-router"},
 			AddressFamily: AddressFamily{AFI: AFIIPv6, SAFI: SAFIUnicast},
 			Prefixes: []AdvertisedPrefix{
-				{CIDR: "2001:db8::/48", Communities: []string{"65000:100"}, LocalPreference: ptr(uint32(100))},
+				{CIDR: "2001:db8::/48", Communities: []Community{"65000:100"}, LocalPreference: ptr(uint32(100))},
 			},
 			Redistribute: []RedistributeSource{RedistributeSourceKernel},
 			OriginateFrom: &AdvertisementOriginateFrom{
@@ -278,7 +278,7 @@ func TestBGPAdvertisementListDeepCopy(t *testing.T) {
 func TestAdvertisedPrefixJSONFieldNames(t *testing.T) {
 	p := AdvertisedPrefix{
 		CIDR:            "2001:db8::/48",
-		Communities:     []string{"65000:100"},
+		Communities:     []Community{"65000:100"},
 		LocalPreference: ptr(uint32(200)),
 	}
 

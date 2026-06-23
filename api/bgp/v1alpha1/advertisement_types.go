@@ -56,7 +56,7 @@ type AdvertisedPrefix struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="community must be in ASN:NN or IP:NN format"
-	Communities []string `json:"communities,omitempty"`
+	Communities []Community `json:"communities,omitempty"`
 
 	// LocalPreference overrides the advertisement-level localPreference for this prefix.
 	// Only meaningful for iBGP sessions.
