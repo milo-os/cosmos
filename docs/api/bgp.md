@@ -298,23 +298,12 @@ be specified.
 |-------------------|----------------------------|-------------|---------------------------------------------------------------------------------------|
 | `routerRef`       | `RouterRef`                | Yes         | Direct reference to a single BGPRouter.                                               |
 | `addressFamily`   | `AddressFamily`            | Yes         | AFI/SAFI for this advertisement.                                                      |
-| `prefixes`        | `[]AdvertisedPrefix`       | Conditional | Per-prefix CIDR entries with optional attribute overrides. Max 256.                   |
+| `prefixes`        | `[]string`                 | Conditional | CIDR prefixes to advertise. Max 256.                                                  |
 | `redistribute`    | `[]RedistributeSource`     | Conditional | Routing table sources to redistribute into BGP. Enum: `static`, `connected`, `kernel`. |
 | `originateFrom`   | `*AdvertisementOriginateFrom` | Conditional | Originate routes from a local interface or kernel table entry.                      |
 | `policyRef`       | `*AdvertisementPolicyRef`  | No          | BGPPolicy to apply as a conditional filter before advertisement.                      |
-| `communities`     | `[]string`                 | No          | Default BGP communities for all prefixes. Per-prefix `communities` overrides this.    |
-| `localPreference` | `*uint32`                  | No          | Default BGP LOCAL_PREF for all prefixes. Per-prefix `localPreference` overrides this. |
-
-**AdvertisedPrefix**
-
-Each entry in `prefixes` is an `AdvertisedPrefix` object. Per-prefix attributes
-replace (not merge with) the advertisement-level defaults for that prefix only.
-
-| Field             | Type       | Required | Description                                                       |
-|-------------------|------------|----------|-------------------------------------------------------------------|
-| `cidr`            | `string`   | Yes      | Network prefix in CIDR notation (e.g., `"2001:db8::/48"`).       |
-| `communities`     | `[]string` | No       | Overrides advertisement-level `communities` for this prefix only. |
-| `localPreference` | `*uint32`  | No       | Overrides advertisement-level `localPreference` for this prefix.  |
+| `communities`     | `[]string`                 | No          | BGP communities to attach to all advertised prefixes.                                 |
+| `localPreference` | `*uint32`                  | No          | BGP LOCAL_PREF for all advertised prefixes.                                           |
 
 **RedistributeSource**
 
@@ -355,7 +344,7 @@ replace (not merge with) the advertisement-level defaults for that prefix only.
 
 #### Examples
 
-**Static prefixes with per-prefix attributes:**
+**Static prefixes:**
 
 ```yaml
 apiVersion: bgp.miloapis.com/v1alpha1
@@ -373,11 +362,8 @@ spec:
     - "65000:100"
   localPreference: 100
   prefixes:
-    - cidr: "2001:db8:loopback::1/128"
-    - cidr: "2001:db8:subnet::/64"
-      communities:
-        - "65000:200"
-      localPreference: 50
+    - "2001:db8:loopback::1/128"
+    - "2001:db8:subnet::/64"
 ```
 
 **Redistribute connected and static routes:**
@@ -433,7 +419,7 @@ spec:
     afi: ipv6
     safi: unicast
   prefixes:
-    - cidr: "2001:db8:loopback::1/128"
+    - "2001:db8:loopback::1/128"
   policyRef:
     name: node-1-export-filter
 ```

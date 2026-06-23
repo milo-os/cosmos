@@ -79,7 +79,7 @@ spec:
                   afi: ipv6
                   safi: unicast
                 prefixes:
-                  - cidr: "2001:db8:e2e::/48"
+                  - "2001:db8:e2e::/48"
 
     - name: assert-advertisement-accepted
       try:
