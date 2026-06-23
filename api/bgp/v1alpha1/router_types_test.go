@@ -143,10 +143,10 @@ func TestBGPRouterLargeLocalASN(t *testing.T) {
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: "large-asn-router"},
 		Spec: BGPRouterSpec{
-			TargetRef:  TargetRef{Kind: "Node", Name: "node-1"},
-			LocalASN:   int64(maxASN),
-			RouterID:   "10.0.0.1",
-			Roles:      []RouterRole{RouterRoleTransit},
+			TargetRef: TargetRef{Kind: "Node", Name: "node-1"},
+			LocalASN:  int64(maxASN),
+			RouterID:  "10.0.0.1",
+			Roles:     []RouterRole{RouterRoleTransit},
 			AddressFamilies: []AddressFamily{
 				{AFI: AFIIPv4, SAFI: SAFIUnicast},
 			},
@@ -181,10 +181,10 @@ func TestBGPRouterLocalASNAboveSignedInt32Max(t *testing.T) {
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: "above-int32-router"},
 		Spec: BGPRouterSpec{
-			TargetRef:  TargetRef{Kind: "Node", Name: "node-1"},
-			LocalASN:   aboveSignedMax,
-			RouterID:   "10.0.0.1",
-			Roles:      []RouterRole{RouterRoleTransit},
+			TargetRef: TargetRef{Kind: "Node", Name: "node-1"},
+			LocalASN:  aboveSignedMax,
+			RouterID:  "10.0.0.1",
+			Roles:     []RouterRole{RouterRoleTransit},
 			AddressFamilies: []AddressFamily{
 				{AFI: AFIIPv4, SAFI: SAFIUnicast},
 			},
