@@ -3,8 +3,8 @@ package v1alpha1
 import (
 	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // BGPPeerState represents the BGP Finite State Machine state of a session.

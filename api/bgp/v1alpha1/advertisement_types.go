@@ -4,6 +4,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Community is a BGP community in ASN:NN or IP:NN format.
+// +kubebuilder:validation:MaxLength=32
+type Community string
+
+// Prefix is an IPv4 or IPv6 CIDR prefix.
+// +kubebuilder:validation:MaxLength=64
+type Prefix string
+
 // RedistributeSource is a local routing table source to redistribute into BGP.
 //
 // +kubebuilder:validation:Enum=static;connected;kernel
@@ -36,10 +44,11 @@ const (
 // AdvertisedPrefix defines a single CIDR prefix with optional per-prefix BGP attributes.
 // Per-prefix attributes override the advertisement-level defaults when set.
 //
-// +kubebuilder:validation:XValidation:rule="isCIDR(self.cidr)",message="cidr must be a valid IPv4 or IPv6 CIDR"
+// +kubebuilder:validation:XValidation:rule="self.cidr.matches('^[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\.[0-9]+/[0-9]{1,2}$|^[0-9a-fA-F:]+::?[0-9a-fA-F:]+/[0-9]{1,3}$')",message="cidr must be a valid IPv4 or IPv6 CIDR"
 type AdvertisedPrefix struct {
 	// CIDR is the network prefix in CIDR notation (e.g., "2001:db8::/48").
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=45
 	CIDR string `json:"cidr"`
 
 	// Communities overrides the advertisement-level communities for this prefix.
@@ -149,7 +158,7 @@ type BGPAdvertisementSpec struct {
 	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:items:MaxLength=32
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="community must be in ASN:NN or IP:NN format"
-	Communities []string `json:"communities,omitempty"`
+	Communities []Community `json:"communities,omitempty"`
 
 	// LocalPreference sets the default BGP LOCAL_PREF attribute for all advertised prefixes.
 	// Per-prefix localPreference in Prefixes[n].localPreference overrides this value.

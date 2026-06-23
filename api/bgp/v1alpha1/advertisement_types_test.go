@@ -29,7 +29,7 @@ func newTestAdvertisement() *BGPAdvertisement {
 // TestBGPAdvertisementDeepCopy verifies DeepCopy produces an independent copy.
 func TestBGPAdvertisementDeepCopy(t *testing.T) {
 	orig := newTestAdvertisement()
-	orig.Spec.Communities = []string{"65000:100"}
+	orig.Spec.Communities = []Community{"65000:100"}
 	orig.Spec.LocalPreference = ptr(uint32(200))
 
 	dup := orig.DeepCopy()
@@ -64,7 +64,7 @@ func TestBGPAdvertisementJSONRoundTrip(t *testing.T) {
 		{CIDR: "2001:db8::/48", LocalPreference: ptr(uint32(150))},
 		{CIDR: "10.0.0.0/8", Communities: []string{"65000:200"}},
 	}
-	orig.Spec.Communities = []string{"65000:100"}
+	orig.Spec.Communities = []Community{"65000:100"}
 	orig.Spec.LocalPreference = ptr(uint32(100))
 
 	data, err := json.Marshal(orig)
@@ -217,7 +217,7 @@ func TestBGPAdvertisementDeepCopyWithAllFields(t *testing.T) {
 				InterfaceName: ptr("eth0"),
 			},
 			PolicyRef:       &AdvertisementPolicyRef{Name: "my-policy"},
-			Communities:     []string{"65000:99"},
+			Communities:     []Community{"65000:99"},
 			LocalPreference: ptr(uint32(50)),
 		},
 	}
