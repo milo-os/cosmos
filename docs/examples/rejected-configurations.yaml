@@ -77,6 +77,110 @@ spec:
         localPreference: 100
 
 ---
+# INVALID: BGPPolicy match with any=true and other match fields — rejected by CEL validation
+#
+# When any is true, all other match conditions (addressFamilies, prefixList,
+# evpnRouteType, vni, macAddress, ipPrefix, localPreference, med) must be empty.
+# Violates: !has(self.any) || !self.any || !has(self.prefixList) || self.prefixList.size() == 0
+# The API server rejects the resource at admission time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPolicy
+metadata:
+  name: invalid-any-with-prefixlist
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  direction: import
+  terms:
+    - sequence: 10
+      match:
+        any: true
+        prefixList:       # ERROR: prefixList must be empty when any is true
+          - "10.0.0.0/8"
+      action: permit
+
+---
+# INVALID: BGPPolicy with invalid CIDR in prefixList — rejected by CEL validation
+#
+# Each entry in prefixList must be a valid IPv4 or IPv6 CIDR.
+# Using a bare IP address (without prefix length) violates:
+#   self.all(p, isCIDR(p))
+# The API server rejects the resource at admission time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPolicy
+metadata:
+  name: invalid-prefix-list-cidr
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  direction: import
+  terms:
+    - sequence: 10
+      match:
+        prefixList:
+          - "10.0.0.0/8"
+          - "192.168.1.1"   # ERROR: bare IP address is not a CIDR
+      action: permit
+    - sequence: 9999
+      match:
+        any: true
+      action: deny
+
+---
+# INVALID: BGPPolicy with asPath.prepend and asPath.replace both set — rejected by CEL validation
+#
+# prepend and replace are mutually exclusive in AsPathSet. Setting both violates:
+#   !has(self.prepend) || !has(self.replace) || self.replace.size() == 0
+# The API server rejects the resource at admission time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPolicy
+metadata:
+  name: invalid-aspath-prepend-and-replace
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  direction: export
+  terms:
+    - sequence: 10
+      match:
+        any: true
+      action: permit
+      set:
+        asPath:
+          prepend: 2       # ERROR: cannot set both prepend and replace
+          replace:         # ERROR: mutually exclusive with prepend
+            - 65000
+            - 65001
+
+---
+# INVALID: BGPPolicy with nextHop.self and nextHop.address both set — rejected by CEL validation
+#
+# self and address are mutually exclusive in NextHopSet. Setting both violates:
+#   !has(self.self) || !self.self || !has(self.address) || self.address.size() == 0
+# The API server rejects the resource at admission time.
+apiVersion: bgp.miloapis.com/v1alpha1
+kind: BGPPolicy
+metadata:
+  name: invalid-nexthop-self-and-address
+  namespace: default
+spec:
+  routerRef:
+    name: node-1-underlay
+  direction: export
+  terms:
+    - sequence: 10
+      match:
+        any: true
+      action: permit
+      set:
+        nextHop:
+          self: true               # ERROR: cannot set both self and address
+          address: "10.0.0.1"     # ERROR: mutually exclusive with self
+
+---
 # BLOCKED: Deletion of BGPRouter still referenced by BGPPeer — deletion blocked
 #
 # A BGPRouter cannot be deleted while any BGPPeer, BGPAdvertisement, or
