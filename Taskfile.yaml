@@ -52,7 +52,7 @@ tasks:
 
   lint:
     desc: Run golangci-lint, yamlfmt, and yaml extension check
-    deps: [golangci-lint, yamlfmt]
+    deps: [tools:golangci-lint, tools:yamlfmt]
     cmds:
       - '{{.GOLANGCI_LINT}} run'
       - '{{.YAMLFMT}} -lint ./...'
@@ -69,7 +69,7 @@ tasks:
 
   lint-fix:
     desc: Run golangci-lint and yamlfmt with fixes
-    deps: [golangci-lint, yamlfmt]
+    deps: [tools:golangci-lint, tools:yamlfmt]
     cmds:
       - '{{.GOLANGCI_LINT}} run --fix'
       - '{{.YAMLFMT}} ./...'
@@ -90,13 +90,13 @@ tasks:
 
   generate:
     desc: Generate deepcopy methods
-    deps: [controller-gen]
+    deps: [tools:controller-gen]
     cmds:
       - '{{.CONTROLLER_GEN}} object:headerFile="hack/boilerplate.go.txt" paths="./..."'
 
   manifests:
     desc: Generate CRD manifests
-    deps: [controller-gen]
+    deps: [tools:controller-gen]
     cmds:
       - '{{.CONTROLLER_GEN}} crd paths="./api/..." output:crd:artifacts:config=config/crd'
 
@@ -131,7 +131,11 @@ tasks:
   ## Dependencies
   ##
 
-  golangci-lint:
+  tools:
+    desc: Install all development tools
+    deps: [tools:golangci-lint, tools:controller-gen, tools:chainsaw, tools:yamlfmt]
+
+  tools:golangci-lint:
     desc: Download golangci-lint locally if necessary
     run: once
     cmds:
@@ -141,7 +145,7 @@ tasks:
           PACKAGE: github.com/golangci/golangci-lint/v2/cmd/golangci-lint
           VERSION: '{{.GOLANGCI_LINT_VERSION}}'
 
-  controller-gen:
+  tools:controller-gen:
     desc: Download controller-gen locally if necessary
     run: once
     cmds:
@@ -151,7 +155,7 @@ tasks:
           PACKAGE: sigs.k8s.io/controller-tools/cmd/controller-gen
           VERSION: '{{.CONTROLLER_GEN_VERSION}}'
 
-  chainsaw:
+  tools:chainsaw:
     desc: Download chainsaw locally if necessary
     run: once
     cmds:
@@ -161,7 +165,7 @@ tasks:
           PACKAGE: github.com/kyverno/chainsaw
           VERSION: '{{.CHAINSAW_VERSION}}'
 
-  yamlfmt:
+  tools:yamlfmt:
     desc: Download yamlfmt locally if necessary
     run: once
     cmds:
@@ -170,10 +174,6 @@ tasks:
           TARGET: '{{.YAMLFMT}}'
           PACKAGE: github.com/google/yamlfmt/cmd/yamlfmt
           VERSION: '{{.YAMLFMT_VERSION}}'
-
-  tools:
-    desc: Install all development tools
-    deps: [golangci-lint, controller-gen, chainsaw, yamlfmt]
 
   install-tool:
     internal: true
