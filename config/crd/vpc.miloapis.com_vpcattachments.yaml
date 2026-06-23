@@ -46,14 +46,13 @@ spec:
                     description: A list of IPv4 or IPv6 addresses associated with
                       the interface.
                     items:
-                      maxLength: 64
                       type: string
                     maxItems: 16
                     minItems: 1
                     type: array
                   name:
-                    default: galactic0
                     description: Name of the interface (e.g., eth0).
+                    minLength: 1
                     type: string
                 required:
                 - addresses

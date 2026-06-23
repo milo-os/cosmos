@@ -4,10 +4,10 @@ metadata:
   name: vpc-crd-schema
 spec:
   description: >
-    Verify schema validation, storage, and field defaults for VPC and VPCAttachment CRDs.
-    Tests that valid resources are accepted and stored, invalid resources are rejected by
-    the API server, and server-side defaults are applied correctly. Does not require the
-    BGP operator to be running — CRD schema is enforced by the API server alone.
+    Verify schema validation and storage for VPC and VPCAttachment CRDs. Tests that valid
+    resources are accepted and stored, invalid resources are rejected by the API server, and
+    all required fields are enforced. Does not require the BGP operator to be running — CRD
+    schema is enforced by the API server alone.
   steps:
     - name: create-valid-vpc
       try:
@@ -158,16 +158,16 @@ spec:
               fi
               echo "OK: interface name=$IFACE addresses=[$A0, $A1]"
 
-    - name: verify-interface-name-default
+    - name: reject-vpcattachment-missing-interface-name
       try:
         - script:
             content: |
-              set -e
-              kubectl apply -n "$NAMESPACE" -f - <<EOF
+              set +e
+              OUTPUT=$(kubectl apply -n "$NAMESPACE" -f - 2>&1 <<'EOF'
               apiVersion: vpc.miloapis.com/v1alpha1
               kind: VPCAttachment
               metadata:
-                name: e2e-default-iface
+                name: e2e-invalid-no-iface-name
               spec:
                 vpc:
                   name: e2e-valid-vpc
@@ -175,14 +175,16 @@ spec:
                   addresses:
                     - "10.0.2.3/24"
               EOF
-              NAME=$(kubectl get vpcattachment e2e-default-iface -n "$NAMESPACE" \
-                -o jsonpath='{.spec.interface.name}')
-              kubectl delete vpcattachment e2e-default-iface -n "$NAMESPACE"
-              if [ "$NAME" != "galactic0" ]; then
-                echo "ERROR: expected interface name default 'galactic0' but got '$NAME'"
+              )
+              EXIT=$?
+              set -e
+              if [ "$EXIT" -eq 0 ]; then
+                echo "ERROR: expected rejection of VPCAttachment with missing interface.name but resource was accepted"
+                kubectl delete vpcattachment e2e-invalid-no-iface-name -n "$NAMESPACE" 2>/dev/null || true
                 exit 1
               fi
-              echo "OK: interface name defaulted to galactic0"
+              echo "OK: missing interface.name correctly rejected (no default applied)"
+              echo "Server response: $OUTPUT"
 
     - name: reject-vpcattachment-empty-addresses
       try:

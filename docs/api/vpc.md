@@ -62,15 +62,21 @@ The annotation `k8s.v1alpha1.vpc.miloapis.com/vpc-attachment` is set on the atta
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `vpc` | `corev1.ObjectReference` | Yes | Reference to the VPC this attachment belongs to. |
+| `vpc` | `VPCRef` | Yes | Reference to the VPC this attachment belongs to (by name within the same namespace). |
 | `interface` | `VPCAttachmentInterface` | Yes | Network interface configuration. |
+
+**VPCRef**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | Yes | Name of the VPC within the same namespace. |
 
 **VPCAttachmentInterface**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | `string` | Yes | Interface name on the workload (e.g. `galactic0`). Default: `galactic0`. |
-| `addresses` | `[]string` | Yes | IPv4 or IPv6 addresses assigned to the interface. Minimum 1. |
+| `name` | `string` | Yes | Interface name on the workload (e.g. `eth0`). Must be non-empty. No default is applied — callers must always set this field explicitly. |
+| `addresses` | `[]string` | Yes | IPv4 or IPv6 CIDR addresses assigned to the interface. Minimum 1, maximum 16. |
 
 #### Status
 
