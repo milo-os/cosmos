@@ -114,6 +114,69 @@ type BGPPeerSpec struct {
 	KeepaliveTime *metav1.Duration `json:"keepaliveTime,omitempty"`
 }
 
+// BGPPrefixCounter is a per-AFI/SAFI prefix count reported in BGPPeer status.
+type BGPPrefixCounter struct {
+	// AFI is the address family indicator.
+	AFI AFI `json:"afi"`
+
+	// SAFI is the subsequent address family indicator.
+	SAFI SAFI `json:"safi"`
+
+	// Count is the number of prefixes.
+	// +kubebuilder:validation:Minimum=0
+	Count int64 `json:"count"`
+}
+
+// BGPMessageCounters holds BGP protocol message counts for a single direction.
+type BGPMessageCounters struct {
+	// Open is the count of BGP OPEN messages.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Open int64 `json:"open,omitempty"`
+
+	// Update is the count of BGP UPDATE messages.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Update int64 `json:"update,omitempty"`
+
+	// Notification is the count of BGP NOTIFICATION messages.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Notification int64 `json:"notification,omitempty"`
+
+	// Keepalive is the count of BGP KEEPALIVE messages.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Keepalive int64 `json:"keepalive,omitempty"`
+
+	// RouteRefresh is the count of BGP ROUTE-REFRESH messages.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	RouteRefresh int64 `json:"routeRefresh,omitempty"`
+}
+
+// BGPAfiSafiStatus reports negotiation and prefix statistics for a single AFI/SAFI.
+type BGPAfiSafiStatus struct {
+	// AFI is the address family indicator.
+	AFI AFI `json:"afi"`
+
+	// SAFI is the subsequent address family indicator.
+	SAFI SAFI `json:"safi"`
+
+	// Active indicates whether this AFI/SAFI was successfully negotiated with the peer.
+	Active bool `json:"active"`
+
+	// PrefixesReceived is the count of prefixes received from the peer for this AFI/SAFI.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	PrefixesReceived int64 `json:"prefixesReceived,omitempty"`
+
+	// PrefixesAdvertised is the count of prefixes advertised to the peer for this AFI/SAFI.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	PrefixesAdvertised int64 `json:"prefixesAdvertised,omitempty"`
+}
+
 // BGPPeerStatus defines the observed state of BGPPeer.
 type BGPPeerStatus struct {
 	// ObservedGeneration is the .metadata.generation this status was computed from.
@@ -127,6 +190,48 @@ type BGPPeerStatus struct {
 	// LastEstablishedTime is the timestamp of the most recent Established transition.
 	// +optional
 	LastEstablishedTime *metav1.Time `json:"lastEstablishedTime,omitempty"`
+
+	// LastStateChange is the timestamp of the most recent FSM state transition,
+	// regardless of direction (up or down).
+	// +optional
+	LastStateChange *metav1.Time `json:"lastStateChange,omitempty"`
+
+	// Uptime is the duration the session has been continuously Established.
+	// Cleared when the session transitions away from Established.
+	// +optional
+	Uptime *metav1.Duration `json:"uptime,omitempty"`
+
+	// PrefixesReceived is the per-AFI/SAFI count of prefixes received from this peer.
+	//
+	// +listType=map
+	// +listMapKey=afi
+	// +listMapKey=safi
+	// +optional
+	PrefixesReceived []BGPPrefixCounter `json:"prefixesReceived,omitempty"`
+
+	// PrefixesAdvertised is the per-AFI/SAFI count of prefixes advertised to this peer.
+	//
+	// +listType=map
+	// +listMapKey=afi
+	// +listMapKey=safi
+	// +optional
+	PrefixesAdvertised []BGPPrefixCounter `json:"prefixesAdvertised,omitempty"`
+
+	// MessagesSent contains BGP protocol message counters for the send direction.
+	// +optional
+	MessagesSent *BGPMessageCounters `json:"messagesSent,omitempty"`
+
+	// MessagesReceived contains BGP protocol message counters for the receive direction.
+	// +optional
+	MessagesReceived *BGPMessageCounters `json:"messagesReceived,omitempty"`
+
+	// AfiSafi reports per-AFI/SAFI negotiation status and prefix statistics.
+	//
+	// +listType=map
+	// +listMapKey=afi
+	// +listMapKey=safi
+	// +optional
+	AfiSafi []BGPAfiSafiStatus `json:"afiSafi,omitempty"`
 
 	// Conditions contains the standard conditions for this resource.
 	//

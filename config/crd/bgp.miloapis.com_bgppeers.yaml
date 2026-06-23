@@ -123,7 +123,7 @@ spec:
                 type: string
                 x-kubernetes-validations:
                 - message: holdTime must be 0 or >= 3s
-                  rule: 'duration(self) == duration(''0s'') || duration(self) >= duration(''3s'')'
+                  rule: duration(self) == duration('0s') || duration(self) >= duration('3s')
               keepaliveTime:
                 description: |-
                   KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.
@@ -201,6 +201,52 @@ spec:
           status:
             description: BGPPeerStatus defines the observed state of BGPPeer.
             properties:
+              afiSafi:
+                description: AfiSafi reports per-AFI/SAFI negotiation status and prefix
+                  statistics.
+                items:
+                  description: BGPAfiSafiStatus reports negotiation and prefix statistics
+                    for a single AFI/SAFI.
+                  properties:
+                    active:
+                      description: Active indicates whether this AFI/SAFI was successfully
+                        negotiated with the peer.
+                      type: boolean
+                    afi:
+                      description: AFI is the address family indicator.
+                      enum:
+                      - ipv4
+                      - ipv6
+                      - l2vpn
+                      type: string
+                    prefixesAdvertised:
+                      description: PrefixesAdvertised is the count of prefixes advertised
+                        to the peer for this AFI/SAFI.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    prefixesReceived:
+                      description: PrefixesReceived is the count of prefixes received
+                        from the peer for this AFI/SAFI.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    safi:
+                      description: SAFI is the subsequent address family indicator.
+                      enum:
+                      - unicast
+                      - evpn
+                      type: string
+                  required:
+                  - active
+                  - afi
+                  - safi
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - afi
+                - safi
+                x-kubernetes-list-type: map
               conditions:
                 description: Conditions contains the standard conditions for this
                   resource.
@@ -267,13 +313,154 @@ spec:
                   Established transition.
                 format: date-time
                 type: string
+              lastStateChange:
+                description: |-
+                  LastStateChange is the timestamp of the most recent FSM state transition,
+                  regardless of direction (up or down).
+                format: date-time
+                type: string
+              messagesReceived:
+                description: MessagesReceived contains BGP protocol message counters
+                  for the receive direction.
+                properties:
+                  keepalive:
+                    description: Keepalive is the count of BGP KEEPALIVE messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  notification:
+                    description: Notification is the count of BGP NOTIFICATION messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  open:
+                    description: Open is the count of BGP OPEN messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  routeRefresh:
+                    description: RouteRefresh is the count of BGP ROUTE-REFRESH messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  update:
+                    description: Update is the count of BGP UPDATE messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                type: object
+              messagesSent:
+                description: MessagesSent contains BGP protocol message counters for
+                  the send direction.
+                properties:
+                  keepalive:
+                    description: Keepalive is the count of BGP KEEPALIVE messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  notification:
+                    description: Notification is the count of BGP NOTIFICATION messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  open:
+                    description: Open is the count of BGP OPEN messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  routeRefresh:
+                    description: RouteRefresh is the count of BGP ROUTE-REFRESH messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  update:
+                    description: Update is the count of BGP UPDATE messages.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                type: object
               observedGeneration:
                 description: ObservedGeneration is the .metadata.generation this status
                   was computed from.
                 format: int64
                 type: integer
+              prefixesAdvertised:
+                description: PrefixesAdvertised is the per-AFI/SAFI count of prefixes
+                  advertised to this peer.
+                items:
+                  description: BGPPrefixCounter is a per-AFI/SAFI prefix count reported
+                    in BGPPeer status.
+                  properties:
+                    afi:
+                      description: AFI is the address family indicator.
+                      enum:
+                      - ipv4
+                      - ipv6
+                      - l2vpn
+                      type: string
+                    count:
+                      description: Count is the number of prefixes.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    safi:
+                      description: SAFI is the subsequent address family indicator.
+                      enum:
+                      - unicast
+                      - evpn
+                      type: string
+                  required:
+                  - afi
+                  - count
+                  - safi
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - afi
+                - safi
+                x-kubernetes-list-type: map
+              prefixesReceived:
+                description: PrefixesReceived is the per-AFI/SAFI count of prefixes
+                  received from this peer.
+                items:
+                  description: BGPPrefixCounter is a per-AFI/SAFI prefix count reported
+                    in BGPPeer status.
+                  properties:
+                    afi:
+                      description: AFI is the address family indicator.
+                      enum:
+                      - ipv4
+                      - ipv6
+                      - l2vpn
+                      type: string
+                    count:
+                      description: Count is the number of prefixes.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    safi:
+                      description: SAFI is the subsequent address family indicator.
+                      enum:
+                      - unicast
+                      - evpn
+                      type: string
+                  required:
+                  - afi
+                  - count
+                  - safi
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - afi
+                - safi
+                x-kubernetes-list-type: map
               sessionState:
                 description: SessionState is the current BGP FSM state of this session.
+                type: string
+              uptime:
+                description: |-
+                  Uptime is the duration the session has been continuously Established.
+                  Cleared when the session transitions away from Established.
                 type: string
             type: object
         type: object

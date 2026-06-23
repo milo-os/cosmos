@@ -60,6 +60,38 @@ type RouteTarget struct {
 	Value string `json:"value"`
 }
 
+// EVPNRouteType identifies one of the five EVPN BGP route types (RFC 7432, RFC 8365).
+//
+// +kubebuilder:validation:Enum=InclusiveMulticastEthernetTag;MACIPAdvertisement;IPPrefixAdvertisement;StickyMACAddress;IPv6PrefixAdvertisement
+type EVPNRouteType string
+
+const (
+	// EVPNRouteTypeInclusiveMulticastEthernetTag is EVPN Type 1 — used for BUM traffic distribution.
+	EVPNRouteTypeInclusiveMulticastEthernetTag EVPNRouteType = "InclusiveMulticastEthernetTag"
+
+	// EVPNRouteTypeMACIPAdvertisement is EVPN Type 2 — host MAC/IP reachability.
+	EVPNRouteTypeMACIPAdvertisement EVPNRouteType = "MACIPAdvertisement"
+
+	// EVPNRouteTypeIPPrefixAdvertisement is EVPN Type 3 — L3 route distribution (IPv4).
+	EVPNRouteTypeIPPrefixAdvertisement EVPNRouteType = "IPPrefixAdvertisement"
+
+	// EVPNRouteTypeStickyMACAddress is EVPN Type 4 — static/sticky MAC mobility.
+	EVPNRouteTypeStickyMACAddress EVPNRouteType = "StickyMACAddress"
+
+	// EVPNRouteTypeIPv6PrefixAdvertisement is EVPN Type 5 — L3 route distribution (IPv6).
+	EVPNRouteTypeIPv6PrefixAdvertisement EVPNRouteType = "IPv6PrefixAdvertisement"
+)
+
+// EVPNRouteCounter is a per-route-type EVPN route count reported in BGPVRFInstance status.
+type EVPNRouteCounter struct {
+	// RouteType is the EVPN BGP route type.
+	RouteType EVPNRouteType `json:"routeType"`
+
+	// Count is the number of active routes of this type.
+	// +kubebuilder:validation:Minimum=0
+	Count int64 `json:"count"`
+}
+
 // BGPVRFInstanceStatus defines the observed state of BGPVRFInstance.
 type BGPVRFInstanceStatus struct {
 	// Conditions are top-level conditions for this BGPVRFInstance.
@@ -75,6 +107,20 @@ type BGPVRFInstanceStatus struct {
 	// +listMapKey=routerName
 	// +optional
 	Routers []RouterStatus `json:"routers,omitempty"`
+
+	// VNI is the VXLAN Network Identifier applied to this VRF, as reported by the BGP runtime.
+	// Populated once the controller has successfully configured the VRF on at least one router.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=16777215
+	VNI *uint32 `json:"vni,omitempty"`
+
+	// EVPNRouteCount is the per-route-type count of active EVPN routes in this VRF.
+	//
+	// +listType=map
+	// +listMapKey=routeType
+	// +optional
+	EVPNRouteCount []EVPNRouteCounter `json:"evpnRouteCount,omitempty"`
 }
 
 // +kubebuilder:object:root=true
