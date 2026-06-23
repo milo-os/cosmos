@@ -425,3 +425,131 @@ func findCondition(conds []metav1.Condition, typ string) *metav1.Condition {
 	}
 	return nil
 }
+
+// TestBGPPeerNewFieldsJSONRoundTrip verifies that multiSession, routeMapIn,
+// and routeMapOut survive JSON serialization and deserialization.
+func TestBGPPeerNewFieldsJSONRoundTrip(t *testing.T) {
+	peer := &BGPPeer{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "bgp.miloapis.com/v1alpha1",
+			Kind:       "BGPPeer",
+		},
+		ObjectMeta: metav1.ObjectMeta{Name: "new-fields-peer"},
+		Spec: BGPPeerSpec{
+			RouterTarget: RouterTarget{
+				RouterRef: &RouterRef{Name: "test-router"},
+			},
+			PeerASN:      65000,
+			Address:      "10.0.0.2",
+			MultiSession: true,
+			RouteMapIn:   "evpn-import",
+			RouteMapOut:  "evpn-export",
+			AddressFamilies: []AddressFamily{
+				{AFI: AFIIPv4, SAFI: SAFIUnicast},
+			},
+		},
+	}
+
+	data, err := json.Marshal(peer)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var got BGPPeer
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if got.Spec.MultiSession != peer.Spec.MultiSession {
+		t.Errorf("MultiSession: got %v, want %v", got.Spec.MultiSession, peer.Spec.MultiSession)
+	}
+	if got.Spec.RouteMapIn != peer.Spec.RouteMapIn {
+		t.Errorf("RouteMapIn: got %q, want %q", got.Spec.RouteMapIn, peer.Spec.RouteMapIn)
+	}
+	if got.Spec.RouteMapOut != peer.Spec.RouteMapOut {
+		t.Errorf("RouteMapOut: got %q, want %q", got.Spec.RouteMapOut, peer.Spec.RouteMapOut)
+	}
+}
+
+// TestBGPPeerNewFieldsJSONKeys verifies the JSON key names for the new fields
+// are present when set to non-zero values.
+func TestBGPPeerNewFieldsJSONKeys(t *testing.T) {
+	peer := &BGPPeer{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "bgp.miloapis.com/v1alpha1",
+			Kind:       "BGPPeer",
+		},
+		ObjectMeta: metav1.ObjectMeta{Name: "keys-peer"},
+		Spec: BGPPeerSpec{
+			RouterTarget: RouterTarget{
+				RouterRef: &RouterRef{Name: "test-router"},
+			},
+			PeerASN:      65000,
+			Address:      "10.0.0.2",
+			MultiSession: true,
+			RouteMapIn:   "evpn-import",
+			RouteMapOut:  "evpn-export",
+			AddressFamilies: []AddressFamily{
+				{AFI: AFIIPv4, SAFI: SAFIUnicast},
+			},
+		},
+	}
+
+	data, err := json.Marshal(peer.Spec)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	for _, key := range []string{"multiSession", "routeMapIn", "routeMapOut"} {
+		raw, ok := m[key]
+		if !ok {
+			t.Fatalf("expected JSON key %q not found", key)
+		}
+		_ = raw
+	}
+}
+
+// TestBGPPeerNewFieldsDeepCopy verifies DeepCopy handles the new fields correctly.
+func TestBGPPeerNewFieldsDeepCopy(t *testing.T) {
+	peer := &BGPPeer{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "bgp.miloapis.com/v1alpha1",
+			Kind:       "BGPPeer",
+		},
+		ObjectMeta: metav1.ObjectMeta{Name: "copy-new-fields-peer"},
+		Spec: BGPPeerSpec{
+			RouterTarget: RouterTarget{
+				RouterRef: &RouterRef{Name: "test-router"},
+			},
+			PeerASN:      65000,
+			Address:      "10.0.0.2",
+			MultiSession: true,
+			RouteMapIn:   "evpn-import",
+			RouteMapOut:  "evpn-export",
+			AddressFamilies: []AddressFamily{
+				{AFI: AFIIPv4, SAFI: SAFIUnicast},
+			},
+		},
+	}
+
+	copied := peer.DeepCopy()
+
+	copied.Spec.MultiSession = false
+	copied.Spec.RouteMapIn = "mutated"
+	copied.Spec.RouteMapOut = "mutated"
+
+	if peer.Spec.MultiSession != true {
+		t.Errorf("MultiSession mutated via copy: got %v, want true", peer.Spec.MultiSession)
+	}
+	if peer.Spec.RouteMapIn != "evpn-import" {
+		t.Errorf("RouteMapIn mutated via copy: got %q, want %q", peer.Spec.RouteMapIn, "evpn-import")
+	}
+	if peer.Spec.RouteMapOut != "evpn-export" {
+		t.Errorf("RouteMapOut mutated via copy: got %q, want %q", peer.Spec.RouteMapOut, "evpn-export")
+	}
+}

@@ -112,10 +112,99 @@ spec:
                 required:
                 - name
                 type: object
+              authentication:
+                description: |-
+                  Authentication configures peer authentication.
+                  AuthSecretRef takes precedence when both are set.
+                properties:
+                  password:
+                    description: |-
+                      Password is a plain-text authentication password.
+                      Prefer AuthSecretRef for production deployments.
+                    type: string
+                type: object
+              bfd:
+                description: |-
+                  BFD configures Bidirectional Forwarding Detection for fast failure
+                  detection (sub-500ms). Without BFD, convergence relies on BGP hold
+                  timers (default 90s).
+                properties:
+                  detectMultiplier:
+                    description: |-
+                      DetectMultiplier is the number of missed packets before declaring the
+                      BFD session down. Default is 3.
+                    format: int32
+                    maximum: 50
+                    minimum: 3
+                    type: integer
+                  enabled:
+                    description: Enabled indicates whether BFD is enabled for this
+                      peer.
+                    type: boolean
+                  minimumRx:
+                    description: |-
+                      MinimumRx is the minimum reception interval in microseconds.
+                      Defaults to 300000 (300ms).
+                    format: int32
+                    type: integer
+                  minimumTx:
+                    description: |-
+                      MinimumTx is the minimum transmission interval in microseconds.
+                      FRR / GoBGP use microseconds — the controller converts to milliseconds
+                      when programming the runtime. Defaults to 300000 (300ms).
+                    format: int32
+                    type: integer
+                  multiHop:
+                    description: |-
+                      MultiHop enables BFD for eBGP multi-hop sessions (RFC 5883).
+                      Must be true when ebgpMultiHop is true.
+                    type: boolean
+                type: object
+              defaultOriginRoute:
+                allOf:
+                - enum:
+                  - igp
+                  - egp
+                  - incomplete
+                - enum:
+                  - igp
+                  - egp
+                  - incomplete
+                description: |-
+                  DefaultOriginRoute controls default route origination for this peer.
+                  "igp" originates a default route with IGP origin.
+                  "egp" originates a default route with EGP origin.
+                  "incomplete" originates a default route with incomplete origin.
+                  Empty or unset means no default route origination.
+                type: string
               description:
                 description: Description is a human-readable label for this peer (e.g.,
                   "spine-1").
                 type: string
+              ebgpMultiHop:
+                description: |-
+                  EbgpMultiHop enables eBGP multihop when the peer is not directly connected.
+                  When true, the TTL for BGP packets is set to 64 (vs. 1 for direct).
+                type: boolean
+              gracefulRestart:
+                description: |-
+                  GracefulRestart configures BGP graceful restart for this peer.
+                  Prevents route flapping during control-plane restarts.
+                properties:
+                  enabled:
+                    description: Enabled indicates whether graceful restart is enabled
+                      for this peer.
+                    type: boolean
+                  restartTime:
+                    description: |-
+                      RestartTime is the maximum time (in seconds) the peer expects the
+                      local system to complete a graceful restart. Range: 1-1200.
+                      Default: 120 seconds.
+                    format: int32
+                    maximum: 1200
+                    minimum: 1
+                    type: integer
+                type: object
               holdTime:
                 description: |-
                   HoldTime is the BGP hold timer. Must be 0 (disabled) or >= 3s.
@@ -123,17 +212,36 @@ spec:
                 type: string
                 x-kubernetes-validations:
                 - message: holdTime must be 0 or >= 3s
-                  rule: 'duration(self) == duration(''0s'') || duration(self) >= duration(''3s'')'
+                  rule: duration(self) == duration('0s') || duration(self) >= duration('3s')
               keepaliveTime:
                 description: |-
                   KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.
-                  Defaults to 30s if unset.
+                  Defaults to 30s if unset. Maximum is 30s; the controller enforces
+                  the keepalive <= holdTime / 3 constraint with an Accepted=False condition.
                 type: string
+                x-kubernetes-validations:
+                - message: keepaliveTime must be 0 or <= 30s
+                  rule: duration(self) == duration('0s') || duration(self) <= duration('30s')
+              nextHopSelf:
+                description: |-
+                  NextHopSelf controls next-hop behavior for iBGP sessions.
+                  When true, the local router's IP is used as next-hop for all
+                  advertised routes. Common in EVPN iBGP peering.
+                type: boolean
               peerASN:
                 description: PeerASN is the remote AS number.
                 format: int64
                 maximum: 4294967295
                 minimum: 1
+                type: integer
+              removePrivateAS:
+                description: |-
+                  RemovePrivateAS strips private AS numbers (64512-65535, 4200000000-4294967294)
+                  from the AS path on eBGP export. If set to a non-zero value, private ASNs
+                  are replaced with the specified value before export.
+                format: int32
+                maximum: 4294967295
+                minimum: 0
                 type: integer
               routerRef:
                 description: |-

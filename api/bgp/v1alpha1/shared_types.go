@@ -134,3 +134,77 @@ type ResolvedRouterConfig struct {
 	// +optional
 	AddressFamilies []AddressFamily `json:"addressFamilies,omitempty"`
 }
+
+// BGPPeerBFD defines BFD (Bidirectional Forwarding Detection) parameters for a BGP peer.
+//
+// BFD provides sub-second failure detection for BGP sessions, enabling fast
+// convergence without relying on BGP hold timers (default 90s).
+type BGPPeerBFD struct {
+	// Enabled indicates whether BFD is enabled for this peer.
+	// +optional
+	Enabled bool `json:"enabled"`
+
+	// MinimumTx is the minimum transmission interval in microseconds.
+	// FRR / GoBGP use microseconds — the controller converts to milliseconds
+	// when programming the runtime. Defaults to 300000 (300ms).
+	// +optional
+	MinimumTX *int32 `json:"minimumTx,omitempty"`
+
+	// MinimumRx is the minimum reception interval in microseconds.
+	// Defaults to 300000 (300ms).
+	// +optional
+	MinimumRX *int32 `json:"minimumRx,omitempty"`
+
+	// DetectMultiplier is the number of missed packets before declaring the
+	// BFD session down. Default is 3.
+	// +kubebuilder:validation:Minimum=3
+	// +kubebuilder:validation:Maximum=50
+	// +optional
+	DetectMultiplier *int32 `json:"detectMultiplier,omitempty"`
+
+	// MultiHop enables BFD for eBGP multi-hop sessions (RFC 5883).
+	// Must be true when ebgpMultiHop is true.
+	// +optional
+	MultiHop bool `json:"multiHop,omitempty"`
+}
+
+// BGPPeerGracefulRestart defines BGP graceful restart parameters for a peer.
+//
+// Graceful restart (RFC 4724) allows a BGP speaker to restart its control plane
+// without tearing down sessions. Routes are preserved during the restart period,
+// preventing MAC/IP flapping in EVPN deployments.
+type BGPPeerGracefulRestart struct {
+	// Enabled indicates whether graceful restart is enabled for this peer.
+	// +optional
+	Enabled bool `json:"enabled"`
+
+	// RestartTime is the maximum time (in seconds) the peer expects the
+	// local system to complete a graceful restart. Range: 1-1200.
+	// Default: 120 seconds.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1200
+	// +optional
+	RestartTime *uint32 `json:"restartTime,omitempty"`
+}
+
+// BGPPeerAuthentication defines authentication configuration for a BGP peer.
+//
+// Supports both secret-ref-based (MD5/TCP-AO) and plain-text passwords.
+// The plain-text password is primarily for non-production environments.
+type BGPPeerAuthentication struct {
+	// Password is a plain-text authentication password.
+	// Prefer AuthSecretRef for production deployments.
+	// +optional
+	Password *string `json:"password,omitempty"`
+}
+
+// OriginType defines the BGP origin attribute values.
+//
+// +kubebuilder:validation:Enum=igp;egp;incomplete
+type OriginType string
+
+const (
+	OriginIGP         OriginType = "igp"
+	OriginEGP         OriginType = "egp"
+	OriginIncomplete  OriginType = "incomplete"
+)

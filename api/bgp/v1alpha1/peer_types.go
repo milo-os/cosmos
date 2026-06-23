@@ -109,9 +109,73 @@ type BGPPeerSpec struct {
 	HoldTime *metav1.Duration `json:"holdTime,omitempty"`
 
 	// KeepaliveTime is the BGP keepalive interval. Must be <= HoldTime / 3.
-	// Defaults to 30s if unset.
+	// Defaults to 30s if unset. Maximum is 30s; the controller enforces
+	// the keepalive <= holdTime / 3 constraint with an Accepted=False condition.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="duration(self) == duration('0s') || duration(self) <= duration('30s')",message="keepaliveTime must be 0 or <= 30s"
 	KeepaliveTime *metav1.Duration `json:"keepaliveTime,omitempty"`
+
+	// EbgpMultiHop enables eBGP multihop when the peer is not directly connected.
+	// When true, the TTL for BGP packets is set to 64 (vs. 1 for direct).
+	// +optional
+	EbgpMultiHop bool `json:"ebgpMultiHop,omitempty"`
+
+	// BFD configures Bidirectional Forwarding Detection for fast failure
+	// detection (sub-500ms). Without BFD, convergence relies on BGP hold
+	// timers (default 90s).
+	// +optional
+	BFD *BGPPeerBFD `json:"bfd,omitempty"`
+
+	// GracefulRestart configures BGP graceful restart for this peer.
+	// Prevents route flapping during control-plane restarts.
+	// +optional
+	GracefulRestart *BGPPeerGracefulRestart `json:"gracefulRestart,omitempty"`
+
+	// MultiSession enables BFD over MP-BGP (RFC 8935). When true, each
+	// AFI/SAFI negotiates its own BFD session independently. When false
+	// (default), a single BFD session covers all AFI/SAFIs.
+	// +optional
+	MultiSession bool `json:"multiSession,omitempty"`
+
+	// RouteMapIn is the name of a BGPPolicy term set applied to routes
+	// received from this peer (import direction). The name must match
+	// a BGPPolicy resource in the same namespace.
+	// +optional
+	RouteMapIn string `json:"routeMapIn,omitempty"`
+
+	// RouteMapOut is the name of a BGPPolicy term set applied to routes
+	// advertised to this peer (export direction). The name must match
+	// a BGPPolicy resource in the same namespace.
+	// +optional
+	RouteMapOut string `json:"routeMapOut,omitempty"`
+
+	// NextHopSelf controls next-hop behavior for iBGP sessions.
+	// When true, the local router's IP is used as next-hop for all
+	// advertised routes. Common in EVPN iBGP peering.
+	// +optional
+	NextHopSelf bool `json:"nextHopSelf,omitempty"`
+
+	// RemovePrivateAS strips private AS numbers (64512-65535, 4200000000-4294967294)
+	// from the AS path on eBGP export. If set to a non-zero value, private ASNs
+	// are replaced with the specified value before export.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +optional
+	RemovePrivateAS *uint32 `json:"removePrivateAS,omitempty"`
+
+	// DefaultOriginRoute controls default route origination for this peer.
+	// "igp" originates a default route with IGP origin.
+	// "egp" originates a default route with EGP origin.
+	// "incomplete" originates a default route with incomplete origin.
+	// Empty or unset means no default route origination.
+	// +kubebuilder:validation:Enum=igp;egp;incomplete
+	// +optional
+	DefaultOriginRoute *OriginType `json:"defaultOriginRoute,omitempty"`
+
+	// Authentication configures peer authentication.
+	// AuthSecretRef takes precedence when both are set.
+	// +optional
+	Authentication *BGPPeerAuthentication `json:"authentication,omitempty"`
 }
 
 // BGPPeerStatus defines the observed state of BGPPeer.
