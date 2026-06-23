@@ -83,7 +83,7 @@ func (in *VPCAttachmentInterface) DeepCopyInto(out *VPCAttachmentInterface) {
 	*out = *in
 	if in.Addresses != nil {
 		in, out := &in.Addresses, &out.Addresses
-		*out = make([]string, len(*in))
+		*out = make([]IPAddress, len(*in))
 		copy(*out, *in)
 	}
 }
@@ -214,7 +214,7 @@ func (in *VPCSpec) DeepCopyInto(out *VPCSpec) {
 	*out = *in
 	if in.Networks != nil {
 		in, out := &in.Networks, &out.Networks
-		*out = make([]string, len(*in))
+		*out = make([]Network, len(*in))
 		copy(*out, *in)
 	}
 }

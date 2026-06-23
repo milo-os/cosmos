@@ -46,6 +46,8 @@ spec:
                     description: A list of IPv4 or IPv6 addresses associated with
                       the interface.
                     items:
+                      description: IPAddress is an IPv4 or IPv6 address or CIDR string.
+                      maxLength: 64
                       type: string
                     maxItems: 16
                     minItems: 1
