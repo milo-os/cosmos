@@ -26,8 +26,6 @@ import (
 type Network string
 
 // VPCSpec defines the desired state of a VPC.
-//
-// +kubebuilder:validation:XValidation:rule="self.networks.all(n, isCIDR(n))",message="each network must be a valid IPv4 or IPv6 CIDR"
 type VPCSpec struct {
 	// A list of networks in IPv4 or IPv6 CIDR notation associated with the VPC
 	// +kubebuilder:validation:MinItems=1

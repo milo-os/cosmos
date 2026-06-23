@@ -46,8 +46,6 @@ type VPCRef struct {
 type IPAddress string
 
 // VPCAttachmentInterface defines the network interface details.
-//
-// +kubebuilder:validation:XValidation:rule="self.addresses.all(a, isCIDR(a))",message="each address must be a valid IPv4 or IPv6 CIDR"
 type VPCAttachmentInterface struct {
 	// Name of the interface (e.g., eth0).
 	// +required

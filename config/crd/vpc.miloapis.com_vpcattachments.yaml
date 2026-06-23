@@ -60,9 +60,6 @@ spec:
                 - addresses
                 - name
                 type: object
-                x-kubernetes-validations:
-                - message: each address must be a valid IPv4 or IPv6 CIDR
-                  rule: self.addresses.all(a, isCIDR(a))
               vpc:
                 description: VPC this attachment belongs to.
                 properties:
