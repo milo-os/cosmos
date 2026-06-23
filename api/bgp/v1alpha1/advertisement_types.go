@@ -4,6 +4,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Community is a BGP community in ASN:NN or IP:NN format.
+// +kubebuilder:validation:MaxLength=32
+type Community string
+
+// Prefix is an IPv4 or IPv6 CIDR prefix.
+// +kubebuilder:validation:MaxLength=64
+type Prefix string
+
 // BGPAdvertisement defines routing information to advertise from a single BGPRouter.
 // Prefixes are specified inline. Fan-out via routerSelector is intentionally not
 // supported to avoid ambiguous prefix attribution across multiple routers.
@@ -39,14 +47,14 @@ type BGPAdvertisementSpec struct {
 	// +kubebuilder:validation:MaxItems=256
 	// +kubebuilder:validation:XValidation:rule="self.all(p, isCIDR(p))",message="each prefix must be a valid IPv4 or IPv6 CIDR"
 	// +listType=set
-	Prefixes []string `json:"prefixes"`
+	Prefixes []Prefix `json:"prefixes"`
 
 	// Communities is the list of BGP communities to attach to advertised prefixes.
 	// Format: ASN:NN or IP:NN.
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="community must be in ASN:NN or IP:NN format"
-	Communities []string `json:"communities,omitempty"`
+	Communities []Community `json:"communities,omitempty"`
 
 	// LocalPreference sets the BGP LOCAL_PREF attribute on advertised prefixes.
 	// Only meaningful for iBGP sessions.

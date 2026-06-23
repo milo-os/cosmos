@@ -40,6 +40,10 @@ type VPCRef struct {
 	Name string `json:"name"`
 }
 
+// IPAddress is an IPv4 or IPv6 address with CIDR notation.
+// +kubebuilder:validation:MaxLength=64
+type IPAddress string
+
 // VPCAttachmentInterface defines the network interface details.
 //
 // +kubebuilder:validation:XValidation:rule="self.addresses.all(a, isCIDR(a))",message="each address must be a valid IPv4 or IPv6 CIDR"
@@ -53,7 +57,7 @@ type VPCAttachmentInterface struct {
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
 	// +required
-	Addresses []string `json:"addresses"`
+	Addresses []IPAddress `json:"addresses"`
 }
 
 // VPCAttachmentStatus defines the observed state of VPCAttachment.

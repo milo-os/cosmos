@@ -89,6 +89,7 @@ spec:
                   Communities is the list of BGP communities to attach to advertised prefixes.
                   Format: ASN:NN or IP:NN.
                 items:
+                  description: Community is a BGP community in ASN:NN or IP:NN format.
                   maxLength: 32
                   type: string
                 maxItems: 64
@@ -107,6 +108,7 @@ spec:
               prefixes:
                 description: Prefixes is the list of CIDR prefixes to advertise.
                 items:
+                  description: Prefix is an IPv4 or IPv6 CIDR prefix.
                   maxLength: 64
                   type: string
                 maxItems: 256

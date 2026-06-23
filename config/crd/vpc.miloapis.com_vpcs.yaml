@@ -43,6 +43,7 @@ spec:
                 description: A list of networks in IPv4 or IPv6 CIDR notation associated
                   with the VPC
                 items:
+                  description: Network is an IPv4 or IPv6 CIDR network.
                   maxLength: 64
                   type: string
                 maxItems: 64
