@@ -204,7 +204,7 @@ type BGPPeerAuthentication struct {
 type OriginType string
 
 const (
-	OriginIGP         OriginType = "igp"
-	OriginEGP         OriginType = "egp"
-	OriginIncomplete  OriginType = "incomplete"
+	OriginIGP        OriginType = "igp"
+	OriginEGP        OriginType = "egp"
+	OriginIncomplete OriginType = "incomplete"
 )

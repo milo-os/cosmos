@@ -178,11 +178,11 @@ spec:
               NAME=$(kubectl get vpcattachment e2e-default-iface -n "$NAMESPACE" \
                 -o jsonpath='{.spec.interface.name}')
               kubectl delete vpcattachment e2e-default-iface -n "$NAMESPACE"
-              if [ "$NAME" != "galactic0" ]; then
-                echo "ERROR: expected interface name default 'galactic0' but got '$NAME'"
+              if [ "$NAME" != "eth0" ]; then
+                echo "ERROR: expected interface name default 'eth0' but got '$NAME'"
                 exit 1
               fi
-              echo "OK: interface name defaulted to galactic0"
+              echo "OK: interface name defaulted to eth0"
 
     - name: reject-vpcattachment-empty-addresses
       try:

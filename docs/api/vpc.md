@@ -69,7 +69,7 @@ The annotation `k8s.v1alpha1.vpc.miloapis.com/vpc-attachment` is set on the atta
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | `string` | Yes | Interface name on the workload (e.g. `galactic0`). Default: `galactic0`. |
+| `name` | `string` | Yes | Interface name on the workload (e.g. `eth0`). Default: `eth0`. |
 | `addresses` | `[]string` | Yes | IPv4 or IPv6 addresses assigned to the interface. Minimum 1. |
 
 #### Status

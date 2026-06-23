@@ -46,14 +46,15 @@ spec:
                     description: A list of IPv4 or IPv6 addresses associated with
                       the interface.
                     items:
-                      description: IPAddress is an IPv4 or IPv6 CIDR address.
+                      description: IPAddress is an IPv4 or IPv6 address with CIDR
+                        notation.
                       maxLength: 64
                       type: string
                     maxItems: 16
                     minItems: 1
                     type: array
                   name:
-                    default: galactic0
+                    default: eth0
                     description: Name of the interface (e.g., eth0).
                     type: string
                 required:

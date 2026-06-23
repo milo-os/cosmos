@@ -50,7 +50,7 @@ type IPAddress string
 type VPCAttachmentInterface struct {
 	// Name of the interface (e.g., eth0).
 	// +required
-	// +default:value="galactic0"
+	// +default:value="eth0"
 	Name string `json:"name"`
 
 	// A list of IPv4 or IPv6 addresses associated with the interface.
