@@ -92,8 +92,8 @@ type BGPPolicyTerm struct {
 // BGPPolicyMatch defines the conditions under which a policy term fires.
 //
 // +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.prefixList) || self.prefixList.size() == 0",message="prefixList must be empty when any is true"
-// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.asPathFilter) || !self.asPathFilter.pattern.size() > 0",message="asPathFilter must be empty when any is true"
-// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.communityMatch) || !self.communityMatch.size() > 0",message="communityMatch must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.asPathFilter) || self.asPathFilter.pattern.size() == 0",message="asPathFilter must be empty when any is true"
+// +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.communityMatch) || self.communityMatch.size() == 0",message="communityMatch must be empty when any is true"
 // +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.evpnRouteType) || self.evpnRouteType.size() == 0",message="evpnRouteType must be empty when any is true"
 // +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.vni) || self.vni == 0",message="vni must be unset when any is true"
 // +kubebuilder:validation:XValidation:rule="!has(self.any) || !self.any || !has(self.macAddress) || self.macAddress.size() == 0",message="macAddress must be empty when any is true"
@@ -116,6 +116,7 @@ type BGPPolicyMatch struct {
 	// the given CIDR blocks. Each entry must be a valid IPv4 or IPv6 CIDR.
 	// +optional
 	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:items:MaxLength=43
 	// +kubebuilder:validation:XValidation:rule="self.all(p, isCIDR(p))",message="each prefixList entry must be a valid IPv4 or IPv6 CIDR"
 	PrefixList []string `json:"prefixList,omitempty"`
 
@@ -128,6 +129,7 @@ type BGPPolicyMatch struct {
 	// Each entry is a community string in ASN:NN or IP:NN format.
 	// +optional
 	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=32
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="each communityMatch entry must be in ASN:NN or IP:NN format"
 	CommunityMatch []string `json:"communityMatch,omitempty"`
 
@@ -343,12 +345,14 @@ type ExtendedCommunitySet struct {
 	// Add is a list of extended communities to attach.
 	// +optional
 	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=64
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9a-fA-F:.]+$'))",message="each extCommunity entry must contain only valid characters (digits, letters, colons, dots)"
 	Add []string `json:"add,omitempty"`
 
 	// Remove is a list of extended communities to strip.
 	// +optional
 	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=64
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9a-fA-F:.]+$'))",message="each extCommunity entry must contain only valid characters (digits, letters, colons, dots)"
 	Remove []string `json:"remove,omitempty"`
 }

@@ -45,6 +45,7 @@ type BGPAdvertisementSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:items:MaxLength=43
 	// +kubebuilder:validation:XValidation:rule="self.all(p, isCIDR(p))",message="each prefix must be a valid IPv4 or IPv6 CIDR"
 	// +listType=set
 	Prefixes []Prefix `json:"prefixes"`
@@ -53,6 +54,7 @@ type BGPAdvertisementSpec struct {
 	// Format: ASN:NN or IP:NN.
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:MaxLength=32
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="community must be in ASN:NN or IP:NN format"
 	Communities []Community `json:"communities,omitempty"`
 

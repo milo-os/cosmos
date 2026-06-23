@@ -217,6 +217,7 @@ spec:
                             CommunityMatch matches routes by BGP community.
                             Each entry is a community string in ASN:NN or IP:NN format.
                           items:
+                            maxLength: 32
                             type: string
                           maxItems: 32
                           type: array
@@ -274,6 +275,7 @@ spec:
                             PrefixList constrains the match to routes whose prefix matches one of
                             the given CIDR blocks. Each entry must be a valid IPv4 or IPv6 CIDR.
                           items:
+                            maxLength: 43
                             type: string
                           maxItems: 256
                           type: array
@@ -296,10 +298,10 @@ spec:
                           || self.prefixList.size() == 0'
                       - message: asPathFilter must be empty when any is true
                         rule: '!has(self.any) || !self.any || !has(self.asPathFilter)
-                          || !self.asPathFilter.pattern.size() > 0'
+                          || self.asPathFilter.pattern.size() == 0'
                       - message: communityMatch must be empty when any is true
                         rule: '!has(self.any) || !self.any || !has(self.communityMatch)
-                          || !self.communityMatch.size() > 0'
+                          || self.communityMatch.size() == 0'
                       - message: evpnRouteType must be empty when any is true
                         rule: '!has(self.any) || !self.any || !has(self.evpnRouteType)
                           || self.evpnRouteType.size() == 0'
@@ -400,6 +402,7 @@ spec:
                               description: Add is a list of extended communities to
                                 attach.
                               items:
+                                maxLength: 64
                                 type: string
                               maxItems: 32
                               type: array
@@ -411,6 +414,7 @@ spec:
                               description: Remove is a list of extended communities
                                 to strip.
                               items:
+                                maxLength: 64
                                 type: string
                               maxItems: 32
                               type: array
