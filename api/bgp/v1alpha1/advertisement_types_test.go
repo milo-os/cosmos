@@ -19,9 +19,7 @@ func newTestAdvertisement() *BGPAdvertisement {
 		Spec: BGPAdvertisementSpec{
 			RouterRef:     RouterRef{Name: "test-router"},
 			AddressFamily: AddressFamily{AFI: AFIIPv6, SAFI: SAFIUnicast},
-			Prefixes: []AdvertisedPrefix{
-				{CIDR: "2001:db8::/48"},
-			},
+			Prefixes:      []Prefix{"2001:db8::/48"},
 		},
 	}
 }
@@ -60,10 +58,7 @@ func TestBGPAdvertisementDeepCopyNil(t *testing.T) {
 // TestBGPAdvertisementJSONRoundTrip verifies JSON serialisation round-trips correctly.
 func TestBGPAdvertisementJSONRoundTrip(t *testing.T) {
 	orig := newTestAdvertisement()
-	orig.Spec.Prefixes = []AdvertisedPrefix{
-		{CIDR: "2001:db8::/48", LocalPreference: ptr(uint32(150))},
-		{CIDR: "10.0.0.0/8", Communities: []Community{"65000:200"}},
-	}
+	orig.Spec.Prefixes = []Prefix{"2001:db8::/48", "10.0.0.0/8"}
 	orig.Spec.Communities = []Community{"65000:100"}
 	orig.Spec.LocalPreference = ptr(uint32(100))
 
@@ -83,17 +78,11 @@ func TestBGPAdvertisementJSONRoundTrip(t *testing.T) {
 	if len(got.Spec.Prefixes) != 2 {
 		t.Fatalf("Prefixes len: got %d, want 2", len(got.Spec.Prefixes))
 	}
-	if got.Spec.Prefixes[0].CIDR != "2001:db8::/48" {
-		t.Errorf("Prefixes[0].CIDR: got %q, want 2001:db8::/48", got.Spec.Prefixes[0].CIDR)
+	if got.Spec.Prefixes[0] != "2001:db8::/48" {
+		t.Errorf("Prefixes[0]: got %q, want 2001:db8::/48", got.Spec.Prefixes[0])
 	}
-	if got.Spec.Prefixes[0].LocalPreference == nil || *got.Spec.Prefixes[0].LocalPreference != 150 {
-		t.Errorf("Prefixes[0].LocalPreference: got %v, want 150", got.Spec.Prefixes[0].LocalPreference)
-	}
-	if got.Spec.Prefixes[1].CIDR != "10.0.0.0/8" {
-		t.Errorf("Prefixes[1].CIDR: got %q, want 10.0.0.0/8", got.Spec.Prefixes[1].CIDR)
-	}
-	if len(got.Spec.Prefixes[1].Communities) != 1 || got.Spec.Prefixes[1].Communities[0] != "65000:200" {
-		t.Errorf("Prefixes[1].Communities: got %v, want [65000:200]", got.Spec.Prefixes[1].Communities)
+	if got.Spec.Prefixes[1] != "10.0.0.0/8" {
+		t.Errorf("Prefixes[1]: got %q, want 10.0.0.0/8", got.Spec.Prefixes[1])
 	}
 	if got.Spec.Communities[0] != "65000:100" {
 		t.Errorf("Communities[0]: got %q, want 65000:100", got.Spec.Communities[0])
@@ -208,10 +197,8 @@ func TestBGPAdvertisementDeepCopyWithAllFields(t *testing.T) {
 		Spec: BGPAdvertisementSpec{
 			RouterRef:     RouterRef{Name: "test-router"},
 			AddressFamily: AddressFamily{AFI: AFIIPv6, SAFI: SAFIUnicast},
-			Prefixes: []AdvertisedPrefix{
-				{CIDR: "2001:db8::/48", Communities: []Community{"65000:100"}, LocalPreference: ptr(uint32(100))},
-			},
-			Redistribute: []RedistributeSource{RedistributeSourceKernel},
+			Prefixes:      []Prefix{"2001:db8::/48"},
+			Redistribute:  []RedistributeSource{RedistributeSourceKernel},
 			OriginateFrom: &AdvertisementOriginateFrom{
 				Type:          OriginateTypeInterface,
 				InterfaceName: ptr("eth0"),
@@ -225,8 +212,7 @@ func TestBGPAdvertisementDeepCopyWithAllFields(t *testing.T) {
 	dup := orig.DeepCopy()
 
 	// Mutate dup — original must be unaffected.
-	dup.Spec.Prefixes[0].CIDR = "10.0.0.0/8"
-	dup.Spec.Prefixes[0].Communities[0] = "99999:1"
+	dup.Spec.Prefixes[0] = "10.0.0.0/8"
 	dup.Spec.Redistribute[0] = RedistributeSourceStatic
 	dup.Spec.OriginateFrom.Type = OriginateTypeKernel
 	*dup.Spec.OriginateFrom.InterfaceName = "eth1"
@@ -234,11 +220,8 @@ func TestBGPAdvertisementDeepCopyWithAllFields(t *testing.T) {
 	dup.Spec.Communities[0] = "99999:99"
 	*dup.Spec.LocalPreference = 999
 
-	if orig.Spec.Prefixes[0].CIDR != "2001:db8::/48" {
-		t.Errorf("Prefixes[0].CIDR mutated: got %q", orig.Spec.Prefixes[0].CIDR)
-	}
-	if orig.Spec.Prefixes[0].Communities[0] != "65000:100" {
-		t.Errorf("Prefixes[0].Communities[0] mutated: got %q", orig.Spec.Prefixes[0].Communities[0])
+	if orig.Spec.Prefixes[0] != "2001:db8::/48" {
+		t.Errorf("Prefixes[0] mutated: got %q", orig.Spec.Prefixes[0])
 	}
 	if orig.Spec.Redistribute[0] != RedistributeSourceKernel {
 		t.Errorf("Redistribute[0] mutated: got %q", orig.Spec.Redistribute[0])
@@ -271,31 +254,6 @@ func TestBGPAdvertisementListDeepCopy(t *testing.T) {
 
 	if list.Items[0].Spec.RouterRef.Name != "test-router" {
 		t.Errorf("original list item mutated via copy")
-	}
-}
-
-// TestAdvertisedPrefixJSONFieldNames verifies the JSON key names for AdvertisedPrefix.
-func TestAdvertisedPrefixJSONFieldNames(t *testing.T) {
-	p := AdvertisedPrefix{
-		CIDR:            "2001:db8::/48",
-		Communities:     []Community{"65000:100"},
-		LocalPreference: ptr(uint32(200)),
-	}
-
-	data, err := json.Marshal(p)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-
-	for _, key := range []string{"cidr", "communities", "localPreference"} {
-		if _, ok := m[key]; !ok {
-			t.Errorf("expected JSON key %q not found in %v", key, m)
-		}
 	}
 }
 

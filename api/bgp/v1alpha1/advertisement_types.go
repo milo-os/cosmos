@@ -10,6 +10,7 @@ type Community string
 
 // Prefix is an IPv4 or IPv6 CIDR prefix.
 // +kubebuilder:validation:MaxLength=64
+// +kubebuilder:validation:XValidation:rule="self.matches('^[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\.[0-9]+/[0-9]{1,2}$|^[0-9a-fA-F:]+::?[0-9a-fA-F:]+/[0-9]{1,3}$')",message="must be a valid IPv4 or IPv6 CIDR"
 type Prefix string
 
 // RedistributeSource is a local routing table source to redistribute into BGP.
@@ -40,31 +41,6 @@ const (
 	// OriginateTypeKernel originates routes learned from the kernel routing table.
 	OriginateTypeKernel AdvertisementOriginateType = "kernel"
 )
-
-// AdvertisedPrefix defines a single CIDR prefix with optional per-prefix BGP attributes.
-// Per-prefix attributes override the advertisement-level defaults when set.
-//
-// +kubebuilder:validation:XValidation:rule="self.cidr.matches('^[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\.[0-9]+/[0-9]{1,2}$|^[0-9a-fA-F:]+::?[0-9a-fA-F:]+/[0-9]{1,3}$')",message="cidr must be a valid IPv4 or IPv6 CIDR"
-type AdvertisedPrefix struct {
-	// CIDR is the network prefix in CIDR notation (e.g., "2001:db8::/48").
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=45
-	CIDR string `json:"cidr"`
-
-	// Communities overrides the advertisement-level communities for this prefix.
-	// When set, replaces (not merges with) the top-level communities for this prefix only.
-	// +optional
-	// +kubebuilder:validation:MaxItems=64
-	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="community must be in ASN:NN or IP:NN format"
-	Communities []Community `json:"communities,omitempty"`
-
-	// LocalPreference overrides the advertisement-level localPreference for this prefix.
-	// Only meaningful for iBGP sessions.
-	// +optional
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	LocalPreference *uint32 `json:"localPreference,omitempty"`
-}
 
 // AdvertisementOriginateFrom defines how routes are sourced from a local system
 // resource rather than from the static Prefixes list.
@@ -124,14 +100,12 @@ type BGPAdvertisementSpec struct {
 	// +kubebuilder:validation:Required
 	AddressFamily AddressFamily `json:"addressFamily"`
 
-	// Prefixes is the list of CIDR prefixes to advertise with optional per-prefix attributes.
-	// Per-prefix communities and localPreference override the advertisement-level defaults.
+	// Prefixes is the list of CIDR prefixes to advertise.
 	// At least one of Prefixes, Redistribute, or OriginateFrom must be specified.
 	// +optional
 	// +kubebuilder:validation:MaxItems=256
-	// +listType=map
-	// +listMapKey=cidr
-	Prefixes []AdvertisedPrefix `json:"prefixes,omitempty"`
+	// +listType=set
+	Prefixes []Prefix `json:"prefixes,omitempty"`
 
 	// Redistribute defines routing table sources to redistribute into BGP.
 	// Routes matching the source type are originated without requiring explicit CIDR entries.
@@ -156,7 +130,6 @@ type BGPAdvertisementSpec struct {
 	// Per-prefix communities in Prefixes[n].communities replace this value for individual prefixes.
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
-	// +kubebuilder:validation:items:MaxLength=32
 	// +kubebuilder:validation:XValidation:rule="self.all(c, c.matches('^[0-9]{1,10}:[0-9]{1,10}$') || c.matches('^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}:[0-9]{1,10}$'))",message="community must be in ASN:NN or IP:NN format"
 	Communities []Community `json:"communities,omitempty"`
 
