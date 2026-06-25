@@ -28,7 +28,7 @@ func newTestAdvertisement() *BGPAdvertisement {
 func TestBGPAdvertisementDeepCopy(t *testing.T) {
 	orig := newTestAdvertisement()
 	orig.Spec.Communities = []Community{"65000:100"}
-	orig.Spec.LocalPreference = ptr(uint32(200))
+	orig.Spec.LocalPreference = ptr(int32(200))
 
 	dup := orig.DeepCopy()
 
@@ -60,7 +60,7 @@ func TestBGPAdvertisementJSONRoundTrip(t *testing.T) {
 	orig := newTestAdvertisement()
 	orig.Spec.Prefixes = []Prefix{"2001:db8::/48", "10.0.0.0/8"}
 	orig.Spec.Communities = []Community{"65000:100"}
-	orig.Spec.LocalPreference = ptr(uint32(100))
+	orig.Spec.LocalPreference = ptr(int32(100))
 
 	data, err := json.Marshal(orig)
 	if err != nil {
@@ -205,7 +205,7 @@ func TestBGPAdvertisementDeepCopyWithAllFields(t *testing.T) {
 			},
 			PolicyRef:       &AdvertisementPolicyRef{Name: "my-policy"},
 			Communities:     []Community{"65000:99"},
-			LocalPreference: ptr(uint32(50)),
+			LocalPreference: ptr(int32(50)),
 		},
 	}
 

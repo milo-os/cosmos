@@ -126,11 +126,10 @@ func TestBGPPeerPeerASNFieldName(t *testing.T) {
 }
 
 // TestBGPPeerLargePeerASN verifies that 4-byte ASNs (values above signed int32 max)
-// survive JSON round-trip correctly. This is the regression test for the
-// format: int32 / maximum: 4294967295 schema bug.
+// survive JSON round-trip correctly.
 func TestBGPPeerLargePeerASN(t *testing.T) {
 	// Max 4-byte ASN — the boundary of the uint32 range.
-	const maxASN = ^uint32(0) // 4294967295
+	const maxASN = int64(4294967295)
 
 	peer := &BGPPeer{
 		TypeMeta: metav1.TypeMeta{

@@ -50,7 +50,6 @@ type BGPRouterSpec struct {
 	// Must be a valid 2-byte or 4-byte ASN per RFC 6793.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=4294967295
 	LocalASN int64 `json:"localASN"`
 
 	// RouterID is a unique 32-bit identifier expressed in IPv4 dotted-decimal notation.

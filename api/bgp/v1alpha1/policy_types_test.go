@@ -8,7 +8,7 @@ import (
 )
 
 func newTestPolicy() *BGPPolicy {
-	lp := uint32(100)
+	lp := int32(100)
 	return &BGPPolicy{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "bgp.miloapis.com/v1alpha1",
@@ -175,8 +175,8 @@ func TestBGPPolicyJSONRoundTrip(t *testing.T) {
 // TestBGPPolicyMatchFieldNamesJSON verifies that match field JSON keys are correct.
 func TestBGPPolicyMatchFieldNamesJSON(t *testing.T) {
 	vni := uint32(10100)
-	lp := uint32(150)
-	med := uint32(50)
+	lp := int32(150)
+	med := int32(50)
 	mac := "aa:bb:cc:dd:ee:ff"
 	prefix := "10.0.0.0/24"
 
@@ -219,8 +219,8 @@ func TestBGPPolicyMatchFieldNamesJSON(t *testing.T) {
 // TestPolicySetActionsFieldNamesJSON verifies that set action field JSON keys are correct.
 func TestPolicySetActionsFieldNamesJSON(t *testing.T) {
 	self := true
-	metric := uint32(100)
-	color := uint32(42)
+	metric := int32(100)
+	color := int32(42)
 	ep := "End.DT6"
 	origin := BGPOriginIGP
 	prepend := uint32(2)
@@ -268,8 +268,8 @@ func TestPolicySetActionsFieldNamesJSON(t *testing.T) {
 // TestBGPPolicyMatchDeepCopy verifies deep copy isolation for all new match fields.
 func TestBGPPolicyMatchDeepCopy(t *testing.T) {
 	vni := uint32(10100)
-	lp := uint32(150)
-	med := uint32(50)
+	lp := int32(150)
+	med := int32(50)
 	mac := "aa:bb:cc:dd:ee:ff"
 	prefix := "10.0.0.0/24"
 
@@ -318,8 +318,8 @@ func TestBGPPolicyMatchDeepCopy(t *testing.T) {
 // TestPolicySetActionsDeepCopy verifies deep copy isolation for all new set action fields.
 func TestPolicySetActionsDeepCopy(t *testing.T) {
 	self := true
-	metric := uint32(100)
-	color := uint32(42)
+	metric := int32(100)
+	color := int32(42)
 	ep := "End.DT6"
 	origin := BGPOriginIGP
 	prepend := uint32(2)
@@ -425,8 +425,8 @@ func TestBGPPolicyMatchJSONRoundTrip(t *testing.T) {
 func TestPolicySetActionsJSONRoundTrip(t *testing.T) {
 	self := false
 	addr := "2001:db8::1"
-	metric := uint32(200)
-	color := uint32(10)
+	metric := int32(200)
+	color := int32(10)
 	ep := "End.B6"
 	origin := BGPOriginEGP
 	prepend := uint32(3)

@@ -138,8 +138,7 @@ type BGPAdvertisementSpec struct {
 	// Only meaningful for iBGP sessions.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	LocalPreference *uint32 `json:"localPreference,omitempty"`
+	LocalPreference *int32 `json:"localPreference,omitempty"`
 }
 
 // BGPAdvertisementStatus defines the observed state of BGPAdvertisement.

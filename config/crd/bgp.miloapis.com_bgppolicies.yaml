@@ -254,7 +254,6 @@ spec:
                           description: LocalPreference matches routes by BGP LOCAL_PREF
                             value.
                           format: int32
-                          maximum: 4294967295
                           minimum: 0
                           type: integer
                         macAddress:
@@ -267,7 +266,6 @@ spec:
                           description: MED matches routes by Multi-Exit Discriminator
                             value.
                           format: int32
-                          maximum: 4294967295
                           minimum: 0
                           type: integer
                         prefixList:
@@ -367,11 +365,8 @@ spec:
                             rule: '!has(self.prepend) || !has(self.replace) || self.replace.size()
                               == 0'
                         color:
-                          description: |-
-                            Color sets the SRv6 policy color for path selection.
-                            Range: 0–4294967295 (32-bit color).
+                          description: Color sets the SRv6 policy color for path selection.
                           format: int32
-                          maximum: 4294967295
                           minimum: 0
                           type: integer
                         communities:
@@ -428,14 +423,12 @@ spec:
                             LocalPreference sets the LOCAL_PREF attribute.
                             Only meaningful on import (iBGP) or export to iBGP peers.
                           format: int32
-                          maximum: 4294967295
                           minimum: 0
                           type: integer
                         metric:
                           description: Metric sets the MED (Multi-Exit Discriminator)
                             attribute.
                           format: int32
-                          maximum: 4294967295
                           minimum: 0
                           type: integer
                         nextHop:
