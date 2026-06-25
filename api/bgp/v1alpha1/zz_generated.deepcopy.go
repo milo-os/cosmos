@@ -211,7 +211,7 @@ func (in *BGPAdvertisementSpec) DeepCopyInto(out *BGPAdvertisementSpec) {
 	}
 	if in.LocalPreference != nil {
 		in, out := &in.LocalPreference, &out.LocalPreference
-		*out = new(uint32)
+		*out = new(int32)
 		**out = **in
 	}
 }
@@ -413,7 +413,7 @@ func (in *BGPPeerSpec) DeepCopyInto(out *BGPPeerSpec) {
 	}
 	if in.RemovePrivateAS != nil {
 		in, out := &in.RemovePrivateAS, &out.RemovePrivateAS
-		*out = new(uint32)
+		*out = new(int32)
 		**out = **in
 	}
 	if in.DefaultOriginRoute != nil {
@@ -568,12 +568,12 @@ func (in *BGPPolicyMatch) DeepCopyInto(out *BGPPolicyMatch) {
 	}
 	if in.LocalPreference != nil {
 		in, out := &in.LocalPreference, &out.LocalPreference
-		*out = new(uint32)
+		*out = new(int32)
 		**out = **in
 	}
 	if in.MED != nil {
 		in, out := &in.MED, &out.MED
-		*out = new(uint32)
+		*out = new(int32)
 		**out = **in
 	}
 }
@@ -996,7 +996,7 @@ func (in *PolicySetActions) DeepCopyInto(out *PolicySetActions) {
 	}
 	if in.LocalPreference != nil {
 		in, out := &in.LocalPreference, &out.LocalPreference
-		*out = new(uint32)
+		*out = new(int32)
 		**out = **in
 	}
 	if in.Origin != nil {
@@ -1021,12 +1021,12 @@ func (in *PolicySetActions) DeepCopyInto(out *PolicySetActions) {
 	}
 	if in.Metric != nil {
 		in, out := &in.Metric, &out.Metric
-		*out = new(uint32)
+		*out = new(int32)
 		**out = **in
 	}
 	if in.Color != nil {
 		in, out := &in.Color, &out.Color
-		*out = new(uint32)
+		*out = new(int32)
 		**out = **in
 	}
 	if in.Srv6EndpointBehavior != nil {

@@ -161,14 +161,12 @@ type BGPPolicyMatch struct {
 	// LocalPreference matches routes by BGP LOCAL_PREF value.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	LocalPreference *uint32 `json:"localPreference,omitempty"`
+	LocalPreference *int32 `json:"localPreference,omitempty"`
 
 	// MED matches routes by Multi-Exit Discriminator value.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	MED *uint32 `json:"med,omitempty"`
+	MED *int32 `json:"med,omitempty"`
 }
 
 // ASPathFilter matches BGP routes by AS path using a regex pattern.
@@ -231,8 +229,7 @@ type PolicySetActions struct {
 	// Only meaningful on import (iBGP) or export to iBGP peers.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	LocalPreference *uint32 `json:"localPreference,omitempty"`
+	LocalPreference *int32 `json:"localPreference,omitempty"`
 
 	// Origin sets the BGP origin attribute.
 	// +optional
@@ -255,15 +252,12 @@ type PolicySetActions struct {
 	// Metric sets the MED (Multi-Exit Discriminator) attribute.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	Metric *uint32 `json:"metric,omitempty"`
+	Metric *int32 `json:"metric,omitempty"`
 
 	// Color sets the SRv6 policy color for path selection.
-	// Range: 0–4294967295 (32-bit color).
 	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	Color *uint32 `json:"color,omitempty"`
+	Color *int32 `json:"color,omitempty"`
 
 	// Srv6EndpointBehavior sets the SRv6 endpoint behavior on a route.
 	// Common values: End, End.X, End.DT6, End.B6, End.M.

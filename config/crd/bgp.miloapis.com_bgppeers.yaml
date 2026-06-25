@@ -237,7 +237,6 @@ spec:
               peerASN:
                 description: PeerASN is the remote AS number.
                 format: int64
-                maximum: 4294967295
                 minimum: 1
                 type: integer
               removePrivateAS:
@@ -246,7 +245,6 @@ spec:
                   from the AS path on eBGP export. If set to a non-zero value, private ASNs
                   are replaced with the specified value before export.
                 format: int32
-                maximum: 4294967295
                 minimum: 0
                 type: integer
               routeMapIn:

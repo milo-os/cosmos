@@ -106,7 +106,6 @@ spec:
                   Per-prefix localPreference in Prefixes[n].localPreference overrides this value.
                   Only meaningful for iBGP sessions.
                 format: int32
-                maximum: 4294967295
                 minimum: 0
                 type: integer
               originateFrom:

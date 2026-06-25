@@ -80,7 +80,6 @@ type BGPPeerSpec struct {
 	// PeerASN is the remote AS number.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=4294967295
 	PeerASN int64 `json:"peerASN"`
 
 	// Address is the remote peer's IPv4 or IPv6 address.
@@ -159,9 +158,8 @@ type BGPPeerSpec struct {
 	// from the AS path on eBGP export. If set to a non-zero value, private ASNs
 	// are replaced with the specified value before export.
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
 	// +optional
-	RemovePrivateAS *uint32 `json:"removePrivateAS,omitempty"`
+	RemovePrivateAS *int32 `json:"removePrivateAS,omitempty"`
 
 	// DefaultOriginRoute controls default route origination for this peer.
 	// "igp" originates a default route with IGP origin.
