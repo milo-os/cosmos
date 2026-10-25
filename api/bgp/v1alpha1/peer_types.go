@@ -276,5 +276,5 @@ func (s *BGPPeerStatus) SetAcceptedCondition(accepted bool, gen int64, reason, m
 }
 
 func init() {
-	SchemeBuilder.Register(&BGPPeer{}, &BGPPeerList{})
+	registerTypes(&BGPPeer{}, &BGPPeerList{})
 }

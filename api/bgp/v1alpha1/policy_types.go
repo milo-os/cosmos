@@ -373,5 +373,5 @@ type BGPPolicyList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&BGPPolicy{}, &BGPPolicyList{})
+	registerTypes(&BGPPolicy{}, &BGPPolicyList{})
 }
