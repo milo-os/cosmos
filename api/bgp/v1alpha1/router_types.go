@@ -106,5 +106,5 @@ type BGPRouterList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&BGPRouter{}, &BGPRouterList{})
+	registerTypes(&BGPRouter{}, &BGPRouterList{})
 }

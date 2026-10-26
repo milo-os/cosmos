@@ -85,5 +85,5 @@ type BGPVRFInstanceList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&BGPVRFInstance{}, &BGPVRFInstanceList{})
+	registerTypes(&BGPVRFInstance{}, &BGPVRFInstanceList{})
 }

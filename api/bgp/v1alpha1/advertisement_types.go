@@ -167,5 +167,5 @@ type BGPAdvertisementList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&BGPAdvertisement{}, &BGPAdvertisementList{})
+	registerTypes(&BGPAdvertisement{}, &BGPAdvertisementList{})
 }

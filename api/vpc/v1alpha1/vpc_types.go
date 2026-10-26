@@ -77,5 +77,5 @@ type VPCList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&VPC{}, &VPCList{})
+	registerTypes(&VPC{}, &VPCList{})
 }

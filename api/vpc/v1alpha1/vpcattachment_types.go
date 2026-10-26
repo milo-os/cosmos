@@ -102,5 +102,5 @@ type VPCAttachmentList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&VPCAttachment{}, &VPCAttachmentList{})
+	registerTypes(&VPCAttachment{}, &VPCAttachmentList{})
 }
