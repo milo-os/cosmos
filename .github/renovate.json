@@ -36,15 +36,15 @@
     {
       "description": "Group all Go dependencies (excluding k8s core, which has its own cadence)",
       "matchManagers": ["gomod"],
-      "excludePackageNames": [
-        "sigs.k8s.io/controller-runtime",
-        "k8s.io/client-go",
-        "k8s.io/api",
-        "k8s.io/apimachinery",
-        "k8s.io/apiextensions-apiserver"
-      ],
       "groupName": "Go dependencies",
-      "groupSlug": "go-deps"
+      "groupSlug": "go-deps",
+      "matchPackageNames": [
+        "!sigs.k8s.io/controller-runtime",
+        "!k8s.io/client-go",
+        "!k8s.io/api",
+        "!k8s.io/apimachinery",
+        "!k8s.io/apiextensions-apiserver"
+      ]
     },
     {
       "description": "k8s core — grouped, slower cadence",
@@ -76,16 +76,16 @@
       "description": "Automerge patch/minor for non-k8s Go deps",
       "matchManagers": ["gomod"],
       "matchUpdateTypes": ["patch", "minor"],
-      "excludePackageNames": [
-        "sigs.k8s.io/controller-runtime",
-        "k8s.io/client-go",
-        "k8s.io/api",
-        "k8s.io/apimachinery",
-        "k8s.io/apiextensions-apiserver"
-      ],
       "automerge": true,
       "automergeType": "pr",
-      "platformAutomerge": true
+      "platformAutomerge": true,
+      "matchPackageNames": [
+        "!sigs.k8s.io/controller-runtime",
+        "!k8s.io/client-go",
+        "!k8s.io/api",
+        "!k8s.io/apimachinery",
+        "!k8s.io/apiextensions-apiserver"
+      ]
     },
     {
       "description": "Never automerge majors",
