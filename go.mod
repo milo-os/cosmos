@@ -2,6 +2,8 @@ module go.miloapis.com/cosmos
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	k8s.io/apimachinery v0.37.1
 	sigs.k8s.io/controller-runtime v0.25.2
