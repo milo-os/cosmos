@@ -306,7 +306,7 @@ This is an API-only module — no request path, no controllers. Error handling i
 
 ### Linting and Formatting
 
-- Linter: `golangci-lint` v2.1.6 — run via `task lint`.
+- Linter: `golangci-lint` v2.15.0 — run via `task lint`.
 - Formatter: `go fmt` runs automatically as a dependency of `task build` and `task test:unit`.
 - `go vet` runs with `GOOS=linux` to catch cross-platform issues.
 - No `.golangci.yml` config file — default golangci-lint settings apply.
